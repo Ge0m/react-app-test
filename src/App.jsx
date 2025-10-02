@@ -1,155 +1,88 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
+import yaml from "js-yaml";
 
 
 const MatchBuilder = () => {
-  // Helper to export a single match
+  // Helper to download a file
+  const downloadFile = (filename, content, type = "text/yaml") => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Helper to export a single match as YAML
   const exportSingleMatch = (match) => {
-    const matchSetup = {
-      matchCount: {
-        1: {
-          targetTeaming: {
-            com1: {
-              teamMembers: Array(5)
-                .fill()
-                .map((_, i) => ({ key: match.team1[i]?.id || "None" })),
-              comLevel: "High",
-            },
-            com2: {
-              teamMembers: Array(5)
-                .fill()
-                .map((_, i) => ({ key: match.team2[i]?.id || "None" })),
-              comLevel: "High",
-            },
-            player: {
-              teamMembers: Array(5).fill().map(() => ({ key: "None" })),
-              comLevel: "Middle",
-            },
-            player2: {
-              teamMembers: Array(5).fill().map(() => ({ key: "None" })),
-              comLevel: "Middle",
-            },
-          },
-        },
-      },
+    const matchYaml = {
+      matchName: match.name,
+      team1Name: match.team1Name,
+      team2Name: match.team2Name,
+      team1: match.team1.map((char) => ({
+        character: char.name,
+        costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
+        capsules: char.capsules.filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+      })),
+      team2: match.team2.map((char) => ({
+        character: char.name,
+        costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
+        capsules: char.capsules.filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+      }))
     };
-    const itemSetup = {
-      matchCount: {
-        1: { customize: {} },
-      },
-    };
-    const allChars = [...match.team1, ...match.team2];
-    const uniqueChars = {};
-    allChars.forEach((char) => {
-      if (char.id && char.id !== "") {
-        uniqueChars[char.id] = char;
-      }
-    });
-    Object.values(uniqueChars).forEach((char) => {
-      const key = `(Key="${char.id}")`;
-      const allItems = [];
-      if (char.costume) allItems.push({ key: char.costume });
-      allItems.push(...char.capsules.filter((c) => c).map((c) => ({ key: c })));
-      if (char.ai) allItems.push({ key: char.ai });
-      if (allItems.length === 0) allItems.push({ key: "None" });
-      const inTeam1 = match.team1.some((t) => t.id === char.id);
-      const inTeam2 = match.team2.some((t) => t.id === char.id);
-      itemSetup.matchCount[1].customize[key] = {
-        targetSettings: [
-          { equipItems: [{ key: "None" }], sameCharacterEquip: [] },
-          { equipItems: [{ key: "None" }], sameCharacterEquip: [] },
-          {
-            equipItems: inTeam1 ? allItems : [{ key: "None" }],
-            sameCharacterEquip: [],
-          },
-          {
-            equipItems: inTeam2 ? allItems : [{ key: "None" }],
-            sameCharacterEquip: [],
-          },
-        ],
-      };
-    });
-    // Download both files
-    downloadFile(`MatchSetup_${match.name.replace(/\s+/g, "_")}.json`, JSON.stringify(matchSetup, null, 2));
-    downloadFile(`ItemSetup_${match.name.replace(/\s+/g, "_")}.json`, JSON.stringify(itemSetup, null, 2));
-    setSuccess(`Exported MatchSetup and ItemSetup for ${match.name}`);
+    const yamlStr = yaml.dump(matchYaml, { noRefs: true, lineWidth: 120 });
+    downloadFile(`Match_${match.name.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
+    setSuccess(`Exported match ${match.name} as YAML.`);
   };
 
   // Helper to import a single match
   const importSingleMatch = async (event, matchId) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    let matchSetup = null;
-    let itemSetup = null;
     for (let file of files) {
       const text = await file.text();
       try {
-        const json = JSON.parse(text);
-        if (json.matchCount) {
-          const isItemSetup = Object.values(json.matchCount)[0]?.customize !== undefined;
-          if (isItemSetup) itemSetup = json;
-          else matchSetup = json;
-        }
+        const matchYaml = yaml.load(text);
+        if (!matchYaml || !matchYaml.matchName) throw new Error("Invalid YAML");
+        // Convert display names back to IDs for state
+        const team1 = (matchYaml.team1 || []).map((char) => {
+          const charObj = characters.find(c => c.name === char.character) || { name: char.character, id: "" };
+          return {
+            name: charObj.name,
+            id: charObj.id,
+            costume: char.costume ? (costumes.find(c => c.name === char.costume)?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => char.capsules && char.capsules[i] ? (capsules.find(c => c.name === char.capsules[i])?.id || "") : ""),
+            ai: char.ai ? (aiItems.find(ai => ai.name === char.ai)?.id || "") : ""
+          };
+        }).filter(c => c.id);
+        const team2 = (matchYaml.team2 || []).map((char) => {
+          const charObj = characters.find(c => c.name === char.character) || { name: char.character, id: "" };
+          return {
+            name: charObj.name,
+            id: charObj.id,
+            costume: char.costume ? (costumes.find(c => c.name === char.costume)?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => char.capsules && char.capsules[i] ? (capsules.find(c => c.name === char.capsules[i])?.id || "") : ""),
+            ai: char.ai ? (aiItems.find(ai => ai.name === char.ai)?.id || "") : ""
+          };
+        }).filter(c => c.id);
+        setMatches((prev) => prev.map((m) =>
+          m.id === matchId
+            ? { ...m, team1, team2 }
+            : m
+        ));
+        setSuccess(`Imported match details for match ${matchId}`);
+        setError("");
       } catch (e) {
-        setError("Invalid JSON file: " + file.name);
+        setError("Invalid YAML file: " + file.name);
         return;
       }
     }
-    if (!matchSetup || !itemSetup) {
-      setError("Both MatchSetup.json and ItemSetup.json are required.");
-      return;
-    }
-    // Parse match
-    const matchData = matchSetup.matchCount[1];
-    const team1 = matchData.targetTeaming.com1.teamMembers
-      .map((m) => ({
-        id: m.key !== "None" ? m.key : "",
-        name: "",
-        capsules: Array(7).fill(""),
-        costume: "",
-        ai: "",
-      }))
-      .filter((char) => char.id !== "");
-    const team2 = matchData.targetTeaming.com2.teamMembers
-      .map((m) => ({
-        id: m.key !== "None" ? m.key : "",
-        name: "",
-        capsules: Array(7).fill(""),
-        costume: "",
-        ai: "",
-      }))
-      .filter((char) => char.id !== "");
-    // Fill in items from itemSetup
-    const customize = itemSetup.matchCount[1].customize;
-    Object.entries(customize).forEach(([charKey, charData]) => {
-      const charId = charKey.match(/Key="(.*?)"/)[1];
-      for (let team of [team1, team2]) {
-        const char = team.find((c) => c.id === charId);
-        if (char) {
-          const settings = charData.targetSettings[2].equipItems.concat(charData.targetSettings[3].equipItems);
-          let capsules = [];
-          let costume = "";
-          let ai = "";
-          settings.forEach((item) => {
-            if (!item.key || item.key === "None") return;
-            if (item.key.startsWith("COSTUME_")) costume = item.key;
-            else if (item.key.startsWith("AI_")) ai = item.key;
-            else capsules.push(item.key);
-          });
-          char.capsules = [...capsules, ...Array(7 - capsules.length).fill("")].slice(0, 7);
-          char.costume = costume;
-          char.ai = ai;
-        }
-      }
-    });
-    // Update the match in state
-    setMatches((prev) => prev.map((m) =>
-      m.id === matchId
-        ? { ...m, team1, team2 }
-        : m
-    ));
-    setSuccess(`Imported match details for match ${matchId}`);
-    setError("");
   };
   const [characters, setCharacters] = useState([]);
   const [capsules, setCapsules] = useState([]);
@@ -473,16 +406,6 @@ const MatchBuilder = () => {
     return setup;
   };
 
-  const downloadFile = (filename, content) => {
-    const blob = new Blob([content], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleImportMatches = async (event) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -724,29 +647,16 @@ const MatchCard = ({
         </div>
         <div className="flex gap-2">
           <button
-            onClick={onDuplicate}
-            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500"
-          >
-            <Copy size={16} className="inline mr-1" />
-            DUPLICATE
-          </button>
-          <button
-            onClick={onRemove}
-            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500"
-          >
-            <Trash2 size={16} className="inline mr-1" />
-            REMOVE
-          </button>
-          <button
             onClick={() => exportSingleMatch(match)}
-            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-blue-500"
+            className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-all border border-purple-500 flex items-center justify-center"
+            aria-label="Download Match"
           >
-            <Download size={16} className="inline mr-1" />
-            DOWNLOAD
+            <Download size={18} />
           </button>
-          <label className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-purple-500 cursor-pointer flex items-center">
-            <Upload size={16} className="inline mr-1" />
-            UPLOAD
+          <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center justify-center"
+            aria-label="Upload Match"
+          >
+            <Upload size={18} />
             <input
               type="file"
               accept="application/json"
@@ -755,6 +665,18 @@ const MatchCard = ({
               onChange={(e) => importSingleMatch(e, match.id)}
             />
           </label>
+          <button
+            onClick={onDuplicate}
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500"
+          >
+            <Copy size={16} />
+          </button>
+          <button
+            onClick={onRemove}
+            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
       {!collapsed && (
@@ -799,7 +721,7 @@ const MatchCard = ({
       )}
     </div>
   );
-};
+}
 
 const TeamPanel = ({
   displayName,
