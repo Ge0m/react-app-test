@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Copy, Download, Upload, X } from "lucide-react";
+import { Plus, Trash2, Copy, Download, Upload, X, Sparkles } from "lucide-react";
 
 
 const MatchBuilder = () => {
@@ -336,56 +336,73 @@ const MatchBuilder = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-500 via-orange-600 to-yellow-500 p-4 flex items-center justify-center">
-        <div className="text-white text-2xl">Loading data...</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-600 to-slate-700 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <Sparkles className="w-12 h-12 text-orange-400 animate-pulse mx-auto mb-4" />
+          <div className="text-white text-2xl font-bold tracking-wider">Loading data...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-500 via-orange-600 to-yellow-500 p-4">
-      <div className="max-w-7xl mx-auto bg-white/95 rounded-3xl p-8 shadow-2xl">
-        <h1 className="text-5xl font-bold text-orange-600 text-center mb-8">
-          🐉 Dragon Ball Sparking Zero Match Builder
-        </h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-600 to-slate-700 p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl mb-6 border-2 border-orange-400 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-orange-400/5 to-orange-400/10"></div>
+          <div className="relative z-10">
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-300 via-orange-400 to-orange-300 text-center mb-1 tracking-tight drop-shadow-lg">
+              DRAGON BALL
+            </h1>
+            <p className="text-xl font-bold text-orange-300 text-center tracking-widest drop-shadow">
+              SPARKING! ZERO MATCH BUILDER
+            </p>
+          </div>
+        </div>
 
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
-            {error}
+          <div className="bg-red-600 border-2 border-red-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+            ⚠️ {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-4">
-            {success}
+          <div className="bg-green-600 border-2 border-green-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+            ✓ {success}
           </div>
         )}
 
-        <div className="flex flex-wrap justify-center gap-4 mb-8">
+        <div className="flex flex-wrap justify-center gap-3 mb-6">
           <button
             onClick={addMatch}
-            className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-3 rounded-full font-bold hover:shadow-lg transition-all"
+            className="bg-gradient-to-r from-orange-600 to-orange-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-orange-500"
           >
-            <Plus className="inline mr-2" size={20} />
-            Add Match
+            <span className="flex items-center">
+              <Plus className="mr-2" size={18} />
+              ADD MATCH
+            </span>
           </button>
           <button
             onClick={exportMatches}
-            className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-full font-bold hover:shadow-lg transition-all"
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-green-500"
           >
-            <Download className="inline mr-2" size={20} />
-            Export All
+            <span className="flex items-center">
+              <Download className="mr-2" size={18} />
+              EXPORT ALL
+            </span>
           </button>
           <button
             onClick={clearAllMatches}
-            className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-full font-bold hover:shadow-lg transition-all"
+            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-red-500"
           >
-            <Trash2 className="inline mr-2" size={20} />
-            Clear All
+            <span className="flex items-center">
+              <Trash2 className="mr-2" size={18} />
+              CLEAR ALL
+            </span>
           </button>
         </div>
 
-        <div className="space-y-8">
+        <div className="space-y-6">
           {matches.map((match) => (
             <MatchCard
               key={match.id}
@@ -434,33 +451,35 @@ const MatchCard = ({
   onUpdateCapsule,
 }) => {
   return (
-    <div className="bg-white rounded-2xl p-6 border-4 border-orange-500 shadow-xl">
-      <div className="flex justify-between items-center mb-6 pb-4 border-b-2 border-orange-500">
+    <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 via-orange-500 to-orange-400"></div>
+      
+      <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-600">
         <input
           type="text"
           value={match.name}
           onChange={(e) => {}}
-          className="text-2xl font-bold text-orange-600 bg-transparent border-b-2 border-transparent hover:border-orange-300 focus:border-orange-500 outline-none px-2"
+          className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-300 to-orange-400 bg-transparent border-b-2 border-transparent hover:border-orange-400 focus:border-orange-400 outline-none px-2 py-1 rounded transition-all"
         />
         <div className="flex gap-2">
           <button
             onClick={onDuplicate}
-            className="bg-green-500 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-green-600"
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500"
           >
             <Copy size={16} className="inline mr-1" />
-            Duplicate
+            DUPLICATE
           </button>
           <button
             onClick={onRemove}
-            className="bg-red-500 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-red-600"
+            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500"
           >
             <Trash2 size={16} className="inline mr-1" />
-            Remove
+            REMOVE
           </button>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-4">
         <TeamPanel
           teamName="team1"
           displayName={match.team1Name}
@@ -477,6 +496,7 @@ const MatchCard = ({
           onUpdateCapsule={(charIndex, capsuleIndex, value) =>
             onUpdateCapsule("team1", charIndex, capsuleIndex, value)
           }
+          teamColor="blue"
         />
         <TeamPanel
           teamName="team2"
@@ -494,6 +514,7 @@ const MatchCard = ({
           onUpdateCapsule={(charIndex, capsuleIndex, value) =>
             onUpdateCapsule("team2", charIndex, capsuleIndex, value)
           }
+          teamColor="red"
         />
       </div>
     </div>
@@ -511,14 +532,24 @@ const TeamPanel = ({
   onRemoveCharacter,
   onUpdateCharacter,
   onUpdateCapsule,
+  teamColor,
 }) => {
+  const colorClasses = teamColor === "blue" 
+    ? "from-slate-800 to-slate-700 border-slate-600"
+    : "from-slate-800 to-slate-700 border-slate-600";
+  
+  const buttonColor = teamColor === "blue"
+    ? "from-slate-700 to-slate-600 border-slate-500 hover:from-slate-600 hover:to-slate-500"
+    : "from-slate-700 to-slate-600 border-slate-500 hover:from-slate-600 hover:to-slate-500";
+
   return (
-    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-5 border-2 border-orange-500">
-      <h3 className="text-xl font-bold text-orange-600 mb-4 uppercase">
+    <div className={`bg-gradient-to-br ${colorClasses} rounded-xl p-4 shadow-lg border-2 relative overflow-hidden`}>
+      <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12"></div>
+      <h3 className="text-lg font-bold text-orange-300 mb-3 uppercase tracking-wide drop-shadow relative z-10">
         {displayName}
       </h3>
 
-      <div className="space-y-4">
+      <div className="space-y-3 relative z-10">
         {team.map((char, index) => (
           <CharacterSlot
             key={index}
@@ -538,10 +569,10 @@ const TeamPanel = ({
 
       <button
         onClick={onAddCharacter}
-        className="w-full mt-4 bg-orange-500 text-white py-3 rounded-lg font-bold hover:bg-orange-600 transition-all"
+        className={`w-full mt-4 bg-gradient-to-r ${buttonColor} text-white py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border-2 relative z-10`}
       >
-        <Plus className="inline mr-2" size={20} />
-        Add Character
+        <Plus className="inline mr-1" size={16} />
+        ADD CHARACTER
       </button>
     </div>
   );
@@ -562,52 +593,65 @@ const CharacterSlot = ({
   );
 
   return (
-    <div className="bg-white rounded-lg p-4 border border-orange-300">
+    <div className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg p-3 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-500">
       <div className="flex justify-between items-start mb-3">
-        <div className="flex-1 grid grid-cols-2 gap-2">
-          <select
-            value={character.id}
-            onChange={(e) => onUpdate("id", e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-orange-500"
-          >
-            <option value="">Select Character</option>
-            {characters.map((char) => (
-              <option key={char.id} value={char.id}>
-                {char.name}
-              </option>
-            ))}
-          </select>
+        <div className="flex-1 space-y-2">
+          <div>
+            <label className="block text-xs font-semibold text-orange-300 mb-1 uppercase tracking-wide">
+              Character
+            </label>
+            <select
+              value={character.id}
+              onChange={(e) => onUpdate("id", e.target.value)}
+              className="w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all"
+            >
+              <option value="">Select Character</option>
+              {characters.map((char) => (
+                <option key={char.id} value={char.id}>
+                  {char.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            value={character.costume}
-            onChange={(e) => onUpdate("costume", e.target.value)}
-            className="px-3 py-2 border border-purple-300 rounded-lg text-sm font-bold bg-purple-50 focus:outline-none focus:border-purple-500"
-            disabled={!character.name}
-          >
-            <option value="">Default Costume</option>
-            {charCostumes.map((costume) => (
-              <option key={costume.id} value={costume.id}>
-                {costume.name}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs font-semibold text-purple-300 mb-1 uppercase tracking-wide">
+              Costume
+            </label>
+            <select
+              value={character.costume}
+              onChange={(e) => onUpdate("costume", e.target.value)}
+              className="w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 transition-all"
+              disabled={!character.name}
+            >
+              <option value="">Default Costume</option>
+              {charCostumes.map((costume) => (
+                <option key={costume.id} value={costume.id}>
+                  {costume.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <button
           onClick={onRemove}
-          className="ml-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
+          className="ml-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-110 transition-all border border-red-400"
         >
           <X size={16} />
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="space-y-2 mt-3">
+        <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide">
+          Capsules
+        </label>
         {character.capsules.map((capsule, i) => (
           <select
             key={i}
             value={capsule}
             onChange={(e) => onUpdateCapsule(i, e.target.value)}
-            className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:border-orange-500"
+            className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition-all"
           >
             <option value="">Capsule {i + 1}</option>
             {capsules.map((cap) => (
@@ -618,18 +662,23 @@ const CharacterSlot = ({
           </select>
         ))}
 
-        <select
-          value={character.ai}
-          onChange={(e) => onUpdate("ai", e.target.value)}
-          className="px-2 py-1 border border-blue-300 rounded text-xs bg-blue-50 focus:outline-none focus:border-blue-500 col-span-2"
-        >
-          <option value="">AI Strategy</option>
-          {aiItems.map((ai) => (
-            <option key={ai.id} value={ai.id}>
-              {ai.name}
-            </option>
-          ))}
-        </select>
+        <div className="mt-2 pt-2 border-t border-slate-500">
+          <label className="block text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wide">
+            AI Strategy
+          </label>
+          <select
+            value={character.ai}
+            onChange={(e) => onUpdate("ai", e.target.value)}
+            className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/50 transition-all"
+          >
+            <option value="">Select AI Strategy</option>
+            {aiItems.map((ai) => (
+              <option key={ai.id} value={ai.id}>
+                {ai.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );
