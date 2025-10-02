@@ -8,6 +8,7 @@ const MatchBuilder = () => {
   const [costumes, setCostumes] = useState([]);
   const [aiItems, setAiItems] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [collapsedMatches, setCollapsedMatches] = useState({});
   const [matchCounter, setMatchCounter] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -528,6 +529,8 @@ const MatchBuilder = () => {
                   value
                 )
               }
+              collapsed={collapsedMatches[match.id] || false}
+              onToggleCollapse={() => setCollapsedMatches((prev) => ({ ...prev, [match.id]: !prev[match.id] }))}
             />
           ))}
         </div>
@@ -548,18 +551,29 @@ const MatchCard = ({
   onRemoveCharacter,
   onUpdateCharacter,
   onUpdateCapsule,
+  collapsed,
+  onToggleCollapse,
 }) => {
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 via-orange-500 to-orange-400"></div>
-      
       <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-600">
-        <input
-          type="text"
-          value={match.name}
-          onChange={(e) => {}}
-          className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-300 to-orange-400 bg-transparent border-b-2 border-transparent hover:border-orange-400 focus:border-orange-400 outline-none px-2 py-1 rounded transition-all"
-        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleCollapse}
+            className="p-1 rounded bg-slate-700 text-orange-300 border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all flex items-center justify-center"
+            aria-label={collapsed ? `Expand Match` : `Collapse Match`}
+            style={{ width: 28, height: 28 }}
+          >
+            {collapsed ? <Plus size={18} /> : <Minus size={18} />}
+          </button>
+          <input
+            type="text"
+            value={match.name}
+            onChange={(e) => {}}
+            className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-300 to-orange-400 bg-transparent border-b-2 border-transparent hover:border-orange-400 focus:border-orange-400 outline-none px-2 py-1 rounded transition-all"
+          />
+        </div>
         <div className="flex gap-2">
           <button
             onClick={onDuplicate}
@@ -577,45 +591,46 @@ const MatchCard = ({
           </button>
         </div>
       </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <TeamPanel
-          teamName="team1"
-          displayName={match.team1Name}
-          team={match.team1}
-          characters={characters}
-          capsules={capsules}
-          costumes={costumes}
-          aiItems={aiItems}
-          onAddCharacter={() => onAddCharacter("team1")}
-          onRemoveCharacter={(index) => onRemoveCharacter("team1", index)}
-          onUpdateCharacter={(index, field, value) =>
-            onUpdateCharacter("team1", index, field, value)
-          }
-          onUpdateCapsule={(charIndex, capsuleIndex, value) =>
-            onUpdateCapsule("team1", charIndex, capsuleIndex, value)
-          }
-          teamColor="blue"
-        />
-        <TeamPanel
-          teamName="team2"
-          displayName={match.team2Name}
-          team={match.team2}
-          characters={characters}
-          capsules={capsules}
-          costumes={costumes}
-          aiItems={aiItems}
-          onAddCharacter={() => onAddCharacter("team2")}
-          onRemoveCharacter={(index) => onRemoveCharacter("team2", index)}
-          onUpdateCharacter={(index, field, value) =>
-            onUpdateCharacter("team2", index, field, value)
-          }
-          onUpdateCapsule={(charIndex, capsuleIndex, value) =>
-            onUpdateCapsule("team2", charIndex, capsuleIndex, value)
-          }
-          teamColor="red"
-        />
-      </div>
+      {!collapsed && (
+        <div className="grid grid-cols-2 gap-4">
+          <TeamPanel
+            teamName="team1"
+            displayName={match.team1Name}
+            team={match.team1}
+            characters={characters}
+            capsules={capsules}
+            costumes={costumes}
+            aiItems={aiItems}
+            onAddCharacter={() => onAddCharacter("team1")}
+            onRemoveCharacter={(index) => onRemoveCharacter("team1", index)}
+            onUpdateCharacter={(index, field, value) =>
+              onUpdateCharacter("team1", index, field, value)
+            }
+            onUpdateCapsule={(charIndex, capsuleIndex, value) =>
+              onUpdateCapsule("team1", charIndex, capsuleIndex, value)
+            }
+            teamColor="blue"
+          />
+          <TeamPanel
+            teamName="team2"
+            displayName={match.team2Name}
+            team={match.team2}
+            characters={characters}
+            capsules={capsules}
+            costumes={costumes}
+            aiItems={aiItems}
+            onAddCharacter={() => onAddCharacter("team2")}
+            onRemoveCharacter={(index) => onRemoveCharacter("team2", index)}
+            onUpdateCharacter={(index, field, value) =>
+              onUpdateCharacter("team2", index, field, value)
+            }
+            onUpdateCapsule={(charIndex, capsuleIndex, value) =>
+              onUpdateCapsule("team2", charIndex, capsuleIndex, value)
+            }
+            teamColor="red"
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -795,12 +810,14 @@ const CharacterSlot = ({
               ))}
             </select>
           </div>
-          <button
-            onClick={onRemove}
-            className="mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block mx-auto"
-          >
-            Remove
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={onRemove}
+              className="mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       )}
     </div>
