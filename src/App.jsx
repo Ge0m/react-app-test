@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Copy, Download, Upload, X } from "lucide-react";
 
+
 const MatchBuilder = () => {
   const [characters, setCharacters] = useState([]);
   const [capsules, setCapsules] = useState([]);
