@@ -604,6 +604,7 @@ const MatchBuilder = () => {
               }
               collapsed={collapsedMatches[match.id] || false}
               onToggleCollapse={() => setCollapsedMatches((prev) => ({ ...prev, [match.id]: !prev[match.id] }))}
+              exportSingleMatch={exportSingleMatch}
             />
           ))}
         </div>
@@ -626,6 +627,7 @@ const MatchCard = ({
   onUpdateCapsule,
   collapsed,
   onToggleCollapse,
+  exportSingleMatch,
 }) => {
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
