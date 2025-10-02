@@ -334,6 +334,87 @@ const MatchBuilder = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleImportMatches = async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    let matchSetup = null;
+    let itemSetup = null;
+    for (let file of files) {
+      const text = await file.text();
+      try {
+        const json = JSON.parse(text);
+        if (json.matchCount) {
+          // Heuristic: if customize keys exist, it's itemSetup
+          const isItemSetup = Object.values(json.matchCount)[0]?.customize !== undefined;
+          if (isItemSetup) itemSetup = json;
+          else matchSetup = json;
+        }
+      } catch (e) {
+        setError("Invalid JSON file: " + file.name);
+        return;
+      }
+    }
+    if (!matchSetup || !itemSetup) {
+      setError("Both MatchSetup.json and ItemSetup.json are required.");
+      return;
+    }
+    // Parse matches
+    const newMatches = Object.entries(matchSetup.matchCount).map(([key, matchData], idx) => {
+      const team1 = matchData.targetTeaming.com1.teamMembers.map((m) => ({
+        id: m.key !== "None" ? m.key : "",
+        name: "",
+        capsules: Array(7).fill(""),
+        costume: "",
+        ai: "",
+      }));
+      const team2 = matchData.targetTeaming.com2.teamMembers.map((m) => ({
+        id: m.key !== "None" ? m.key : "",
+        name: "",
+        capsules: Array(7).fill(""),
+        costume: "",
+        ai: "",
+      }));
+      return {
+        id: idx + 1,
+        name: `Match ${idx + 1}`,
+        team1,
+        team2,
+        team1Name: "Team 1",
+        team2Name: "Team 2",
+      };
+    });
+    // Fill in items from itemSetup
+    Object.entries(itemSetup.matchCount).forEach(([key, matchData], idx) => {
+      const customize = matchData.customize;
+      Object.entries(customize).forEach(([charKey, charData]) => {
+        const charId = charKey.match(/Key="(.*?)"/)[1];
+        // Find character in team1 or team2
+        for (let team of [newMatches[idx].team1, newMatches[idx].team2]) {
+          const char = team.find((c) => c.id === charId);
+          if (char) {
+            // Fill items
+            const settings = charData.targetSettings[2].equipItems.concat(charData.targetSettings[3].equipItems);
+            let capsules = [];
+            let costume = "";
+            let ai = "";
+            settings.forEach((item) => {
+              if (!item.key || item.key === "None") return;
+              if (item.key.startsWith("COSTUME_")) costume = item.key;
+              else if (item.key.startsWith("AI_")) ai = item.key;
+              else capsules.push(item.key);
+            });
+            char.capsules = [...capsules, ...Array(7 - capsules.length).fill("")].slice(0, 7);
+            char.costume = costume;
+            char.ai = ai;
+          }
+        }
+      });
+    });
+    setMatches(newMatches);
+    setSuccess("Imported matches from JSON files.");
+    setError("");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-600 to-slate-700 p-4 flex items-center justify-center">
@@ -403,6 +484,17 @@ const MatchBuilder = () => {
               CLEAR ALL
             </span>
           </button>
+          <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center">
+            <Upload className="mr-2" size={18} />
+            IMPORT MATCHES
+            <input
+              type="file"
+              accept="application/json"
+              multiple
+              style={{ display: "none" }}
+              onChange={handleImportMatches}
+            />
+          </label>
         </div>
 
         <div className="space-y-6">
@@ -658,6 +750,13 @@ const CharacterSlot = ({
             style={{ width: 24, height: 24 }}
           >
             {collapsed ? <Plus size={16} /> : <Minus size={16} />}
+          </button>
+          <button
+            onClick={onRemove}
+            className="mt-1 px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400"
+            style={{ minWidth: 80 }}
+          >
+            Remove
           </button>
         </div>
       </div>
