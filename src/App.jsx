@@ -6,6 +6,7 @@ import yaml from "js-yaml";
 const MatchBuilder = () => {
   // Helper to download a file
   const downloadFile = (filename, content, type = "text/yaml") => {
+    console.log("downloadFile called", { filename, type });
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -37,6 +38,7 @@ const MatchBuilder = () => {
       }))
     };
     const yamlStr = yaml.dump(matchYaml, { noRefs: true, lineWidth: 120 });
+    console.log("exportSingleMatch called", { matchYaml, yamlStr });
     downloadFile(`Match_${match.name.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
     setSuccess(`Exported match ${match.name} as YAML.`);
   };
@@ -657,13 +659,13 @@ const MatchCard = ({
             aria-label="Upload Match"
           >
             <Upload size={18} />
-            <input
-              type="file"
-              accept="application/json"
-              multiple
-              style={{ display: "none" }}
-              onChange={(e) => importSingleMatch(e, match.id)}
-            />
+              <input
+                type="file"
+                accept=".yaml,application/x-yaml,text/yaml"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => importSingleMatch(e, match.id)}
+              />
           </label>
           <button
             onClick={onDuplicate}
