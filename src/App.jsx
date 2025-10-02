@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Copy, Download, Upload, X, Sparkles } from "lucide-react";
+import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
 
 
 const MatchBuilder = () => {
@@ -346,31 +346,31 @@ const MatchBuilder = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-600 to-slate-700 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900 p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl mb-6 border-2 border-orange-400 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-orange-400/5 to-orange-400/10"></div>
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-6 shadow-xl mb-6 border-2 border-blue-400 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-400/5 to-blue-400/10"></div>
           <div className="relative z-10">
-            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-300 via-orange-400 to-orange-300 text-center mb-1 tracking-tight drop-shadow-lg">
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-blue-400 to-blue-300 text-center mb-1 tracking-tight drop-shadow-lg">
               DRAGON BALL
             </h1>
-            <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-300 via-orange-400 to-orange-300 text-center mb-1 tracking-tight drop-shadow-lg">
+            <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-blue-400 to-blue-300 text-center mb-1 tracking-tight drop-shadow-lg">
               SPARKING! ZERO LEAGUE
-            </h2>
-            <p className="text-xl font-bold text-orange-300 text-center tracking-widest drop-shadow">
+            </h1>
+            <p className="text-xl font-bold text-blue-300 text-center tracking-widest drop-shadow">
               MATCH BUILDER
             </p>
           </div>
         </div>
 
         {error && (
-          <div className="bg-red-600 border-2 border-red-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+          <div className="bg-blue-900 border-2 border-blue-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
             ⚠️ {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-600 border-2 border-green-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+          <div className="bg-blue-700 border-2 border-blue-800 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
             ✓ {success}
           </div>
         )}
@@ -378,7 +378,7 @@ const MatchBuilder = () => {
         <div className="flex flex-wrap justify-center gap-3 mb-6">
           <button
             onClick={addMatch}
-            className="bg-gradient-to-r from-orange-600 to-orange-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-orange-500"
+            className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500"
           >
             <span className="flex items-center">
               <Plus className="mr-2" size={18} />
@@ -387,7 +387,7 @@ const MatchBuilder = () => {
           </button>
           <button
             onClick={exportMatches}
-            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-green-500"
+            className="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-cyan-500"
           >
             <span className="flex items-center">
               <Download className="mr-2" size={18} />
@@ -396,7 +396,7 @@ const MatchBuilder = () => {
           </button>
           <button
             onClick={clearAllMatches}
-            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-red-500"
+            className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-slate-500"
           >
             <span className="flex items-center">
               <Trash2 className="mr-2" size={18} />
@@ -554,10 +554,11 @@ const TeamPanel = ({
         </h3>
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="ml-2 px-2 py-1 rounded bg-slate-700 text-orange-300 font-bold text-xs border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all"
+          className="ml-2 p-1 rounded bg-slate-700 text-orange-300 border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all flex items-center justify-center"
           aria-label={collapsed ? `Expand ${displayName}` : `Collapse ${displayName}`}
+          style={{ width: 24, height: 24 }}
         >
-          {collapsed ? "Expand" : "Collapse"}
+          {collapsed ? <Plus size={16} /> : <Minus size={16} />}
         </button>
       </div>
       {!collapsed && (
@@ -649,19 +650,20 @@ const CharacterSlot = ({
           </div>
         </div>
 
-        <div className="flex flex-col items-end">
-          <button
-            onClick={onRemove}
-            className="ml-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-110 transition-all border border-red-400"
-          >
-            <X size={16} />
-          </button>
+        <div className="flex flex-col items-end gap-2">
           <button
             onClick={() => setCollapsed((c) => !c)}
-            className="mt-2 px-2 py-1 rounded bg-slate-700 text-orange-300 font-bold text-xs border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all"
+            className="p-1 rounded bg-slate-700 text-orange-300 border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all flex items-center justify-center"
             aria-label={collapsed ? `Expand Character` : `Collapse Character`}
+            style={{ width: 24, height: 24 }}
           >
-            {collapsed ? "Expand" : "Collapse"}
+            {collapsed ? <Plus size={16} /> : <Minus size={16} />}
+          </button>
+          <button
+            onClick={onRemove}
+            className="bg-gradient-to-r from-red-600 to-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-110 transition-all border border-red-400"
+          >
+            <X size={16} />
           </button>
         </div>
       </div>
