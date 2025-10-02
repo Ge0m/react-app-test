@@ -360,20 +360,24 @@ const MatchBuilder = () => {
     }
     // Parse matches
     const newMatches = Object.entries(matchSetup.matchCount).map(([key, matchData], idx) => {
-      const team1 = matchData.targetTeaming.com1.teamMembers.map((m) => ({
-        id: m.key !== "None" ? m.key : "",
-        name: "",
-        capsules: Array(7).fill(""),
-        costume: "",
-        ai: "",
-      }));
-      const team2 = matchData.targetTeaming.com2.teamMembers.map((m) => ({
-        id: m.key !== "None" ? m.key : "",
-        name: "",
-        capsules: Array(7).fill(""),
-        costume: "",
-        ai: "",
-      }));
+      const team1 = matchData.targetTeaming.com1.teamMembers
+        .map((m) => ({
+          id: m.key !== "None" ? m.key : "",
+          name: "",
+          capsules: Array(7).fill(""),
+          costume: "",
+          ai: "",
+        }))
+        .filter((char) => char.id !== "");
+      const team2 = matchData.targetTeaming.com2.teamMembers
+        .map((m) => ({
+          id: m.key !== "None" ? m.key : "",
+          name: "",
+          capsules: Array(7).fill(""),
+          costume: "",
+          ai: "",
+        }))
+        .filter((char) => char.id !== "");
       return {
         id: idx + 1,
         name: `Match ${idx + 1}`,
@@ -751,13 +755,6 @@ const CharacterSlot = ({
           >
             {collapsed ? <Plus size={16} /> : <Minus size={16} />}
           </button>
-          <button
-            onClick={onRemove}
-            className="mt-1 px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400"
-            style={{ minWidth: 80 }}
-          >
-            Remove
-          </button>
         </div>
       </div>
       {!collapsed && (
@@ -798,10 +795,9 @@ const CharacterSlot = ({
               ))}
             </select>
           </div>
-
           <button
             onClick={onRemove}
-            className="w-full mt-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400"
+            className="mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block mx-auto"
           >
             Remove
           </button>
