@@ -354,8 +354,11 @@ const MatchBuilder = () => {
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-300 via-orange-400 to-orange-300 text-center mb-1 tracking-tight drop-shadow-lg">
               DRAGON BALL
             </h1>
+            <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-300 via-orange-400 to-orange-300 text-center mb-1 tracking-tight drop-shadow-lg">
+              SPARKING! ZERO LEAGUE
+            </h2>
             <p className="text-xl font-bold text-orange-300 text-center tracking-widest drop-shadow">
-              SPARKING! ZERO MATCH BUILDER
+              MATCH BUILDER
             </p>
           </div>
         </div>
@@ -534,10 +537,10 @@ const TeamPanel = ({
   onUpdateCapsule,
   teamColor,
 }) => {
-  const colorClasses = teamColor === "blue" 
+  const [collapsed, setCollapsed] = React.useState(false);
+  const colorClasses = teamColor === "blue"
     ? "from-slate-800 to-slate-700 border-slate-600"
     : "from-slate-800 to-slate-700 border-slate-600";
-  
   const buttonColor = teamColor === "blue"
     ? "from-slate-700 to-slate-600 border-slate-500 hover:from-slate-600 hover:to-slate-500"
     : "from-slate-700 to-slate-600 border-slate-500 hover:from-slate-600 hover:to-slate-500";
@@ -545,35 +548,46 @@ const TeamPanel = ({
   return (
     <div className={`bg-gradient-to-br ${colorClasses} rounded-xl p-4 shadow-lg border-2 relative overflow-hidden`}>
       <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12"></div>
-      <h3 className="text-lg font-bold text-orange-300 mb-3 uppercase tracking-wide drop-shadow relative z-10">
-        {displayName}
-      </h3>
-
-      <div className="space-y-3 relative z-10">
-        {team.map((char, index) => (
-          <CharacterSlot
-            key={index}
-            character={char}
-            characters={characters}
-            capsules={capsules}
-            costumes={costumes}
-            aiItems={aiItems}
-            onRemove={() => onRemoveCharacter(index)}
-            onUpdate={(field, value) => onUpdateCharacter(index, field, value)}
-            onUpdateCapsule={(capsuleIndex, value) =>
-              onUpdateCapsule(index, capsuleIndex, value)
-            }
-          />
-        ))}
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-bold text-orange-300 mb-3 uppercase tracking-wide drop-shadow relative z-10">
+          {displayName}
+        </h3>
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="ml-2 px-2 py-1 rounded bg-slate-700 text-orange-300 font-bold text-xs border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all"
+          aria-label={collapsed ? `Expand ${displayName}` : `Collapse ${displayName}`}
+        >
+          {collapsed ? "Expand" : "Collapse"}
+        </button>
       </div>
-
-      <button
-        onClick={onAddCharacter}
-        className={`w-full mt-4 bg-gradient-to-r ${buttonColor} text-white py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border-2 relative z-10`}
-      >
-        <Plus className="inline mr-1" size={16} />
-        ADD CHARACTER
-      </button>
+      {!collapsed && (
+        <>
+          <div className="space-y-3 relative z-10">
+            {team.map((char, index) => (
+              <CharacterSlot
+                key={index}
+                character={char}
+                characters={characters}
+                capsules={capsules}
+                costumes={costumes}
+                aiItems={aiItems}
+                onRemove={() => onRemoveCharacter(index)}
+                onUpdate={(field, value) => onUpdateCharacter(index, field, value)}
+                onUpdateCapsule={(capsuleIndex, value) =>
+                  onUpdateCapsule(index, capsuleIndex, value)
+                }
+              />
+            ))}
+          </div>
+          <button
+            onClick={onAddCharacter}
+            className={`w-full mt-4 bg-gradient-to-r ${buttonColor} text-white py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border-2 relative z-10`}
+          >
+            <Plus className="inline mr-1" size={16} />
+            ADD CHARACTER
+          </button>
+        </>
+      )}
     </div>
   );
 };
@@ -588,6 +602,7 @@ const CharacterSlot = ({
   onUpdate,
   onUpdateCapsule,
 }) => {
+  const [collapsed, setCollapsed] = React.useState(false);
   const charCostumes = costumes.filter(
     (c) => c.exclusiveFor === character.name
   );
@@ -634,52 +649,62 @@ const CharacterSlot = ({
           </div>
         </div>
 
-        <button
-          onClick={onRemove}
-          className="ml-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-110 transition-all border border-red-400"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      <div className="space-y-2 mt-3">
-        <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide">
-          Capsules
-        </label>
-        {character.capsules.map((capsule, i) => (
-          <select
-            key={i}
-            value={capsule}
-            onChange={(e) => onUpdateCapsule(i, e.target.value)}
-            className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition-all"
+        <div className="flex flex-col items-end">
+          <button
+            onClick={onRemove}
+            className="ml-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-110 transition-all border border-red-400"
           >
-            <option value="">Capsule {i + 1}</option>
-            {capsules.map((cap) => (
-              <option key={cap.id} value={cap.id}>
-                {cap.name}
-              </option>
-            ))}
-          </select>
-        ))}
-
-        <div className="mt-2 pt-2 border-t border-slate-500">
-          <label className="block text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wide">
-            AI Strategy
-          </label>
-          <select
-            value={character.ai}
-            onChange={(e) => onUpdate("ai", e.target.value)}
-            className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/50 transition-all"
+            <X size={16} />
+          </button>
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="mt-2 px-2 py-1 rounded bg-slate-700 text-orange-300 font-bold text-xs border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all"
+            aria-label={collapsed ? `Expand Character` : `Collapse Character`}
           >
-            <option value="">Select AI Strategy</option>
-            {aiItems.map((ai) => (
-              <option key={ai.id} value={ai.id}>
-                {ai.name}
-              </option>
-            ))}
-          </select>
+            {collapsed ? "Expand" : "Collapse"}
+          </button>
         </div>
       </div>
+      {!collapsed && (
+        <div className="space-y-2 mt-3">
+          <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide">
+            Capsules
+          </label>
+          {character.capsules.map((capsule, i) => (
+            <select
+              key={i}
+              value={capsule}
+              onChange={(e) => onUpdateCapsule(i, e.target.value)}
+              className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition-all"
+            >
+              <option value="">Capsule {i + 1}</option>
+              {capsules.map((cap) => (
+                <option key={cap.id} value={cap.id}>
+                  {cap.name}
+                </option>
+              ))}
+            </select>
+          ))}
+
+          <div className="mt-2 pt-2 border-t border-slate-500">
+            <label className="block text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wide">
+              AI Strategy
+            </label>
+            <select
+              value={character.ai}
+              onChange={(e) => onUpdate("ai", e.target.value)}
+              className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/50 transition-all"
+            >
+              <option value="">Select AI Strategy</option>
+              {aiItems.map((ai) => (
+                <option key={ai.id} value={ai.id}>
+                  {ai.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
