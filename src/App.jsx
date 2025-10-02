@@ -805,6 +805,9 @@ const TeamPanel = ({
   importSingleTeam,
   teamName,
 }) => {
+  if (typeof exportSingleTeam !== "function") {
+    console.warn("TeamPanel: exportSingleTeam prop is not a function!", exportSingleTeam);
+  }
   const [collapsed, setCollapsed] = React.useState(false);
   const colorClasses = teamColor === "blue"
     ? "from-slate-800 to-slate-700 border-slate-600"
