@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
 import yaml from "js-yaml";
+
+
+const MatchBuilder = () => {
   // Export a single team as YAML
   const exportSingleTeam = (team, teamName, matchName) => {
     const teamYaml = {
@@ -16,6 +19,40 @@ import yaml from "js-yaml";
     const yamlStr = yaml.dump(teamYaml, { noRefs: true, lineWidth: 120 });
     downloadFile(`Team_${teamName.replace(/\s+/g, "_")}_${matchName.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
     setSuccess(`Exported team ${teamName} as YAML.`);
+  };
+
+  // Import a single team from YAML
+  const importSingleTeam = async (event, matchId, teamName) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    for (let file of files) {
+      const text = await file.text();
+      try {
+        const teamYaml = yaml.load(text);
+        if (!teamYaml || !teamYaml.teamName || !Array.isArray(teamYaml.team)) throw new Error("Invalid YAML");
+        // Convert display names back to IDs for state
+        const team = (teamYaml.team || []).map((char) => {
+          const charObj = characters.find(c => c.name === char.character) || { name: char.character, id: "" };
+          return {
+            name: charObj.name,
+            id: charObj.id,
+            costume: char.costume ? (costumes.find(c => c.name === char.costume)?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => char.capsules && char.capsules[i] ? (capsules.find(c => c.name === char.capsules[i])?.id || "") : ""),
+            ai: char.ai ? (aiItems.find(ai => ai.name === char.ai)?.id || "") : ""
+          };
+        }).filter(c => c.id);
+        setMatches((prev) => prev.map((m) =>
+          m.id === matchId
+            ? { ...m, [teamName]: team }
+            : m
+        ));
+        setSuccess(`Imported team details for ${teamName} in match ${matchId}`);
+        setError("");
+      } catch (e) {
+        setError("Invalid YAML file: " + file.name);
+        return;
+      }
+    }
   };
   // Helper to download a file
   const downloadFile = (filename, content, type = "text/yaml") => {
@@ -619,14 +656,13 @@ import yaml from "js-yaml";
               onToggleCollapse={() => setCollapsedMatches((prev) => ({ ...prev, [match.id]: !prev[match.id] }))}
               exportSingleMatch={exportSingleMatch}
               importSingleMatch={importSingleMatch}
-              exportSingleTeam={exportSingleTeam}
-              importSingleTeam={importSingleTeam}
             />
           ))}
         </div>
       </div>
     </div>
   );
+};
 
 const MatchCard = ({
   match,
@@ -644,8 +680,6 @@ const MatchCard = ({
   onToggleCollapse,
   exportSingleMatch,
   importSingleMatch,
-  exportSingleTeam,
-  importSingleTeam,
 }) => {
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
