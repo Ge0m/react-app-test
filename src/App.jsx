@@ -4,6 +4,56 @@ import yaml from "js-yaml";
 
 
 const MatchBuilder = () => {
+  // Export a single team as YAML
+  const exportSingleTeam = (team, teamName, matchName) => {
+    const teamYaml = {
+      matchName,
+      teamName,
+      team: team.map((char) => ({
+        character: char.name,
+        costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
+        capsules: char.capsules.filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+      }))
+    };
+    const yamlStr = yaml.dump(teamYaml, { noRefs: true, lineWidth: 120 });
+    downloadFile(`Team_${teamName.replace(/\s+/g, "_")}_${matchName.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
+    setSuccess(`Exported team ${teamName} as YAML.`);
+  };
+
+  // Import a single team from YAML
+  const importSingleTeam = async (event, matchId, teamName) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    for (let file of files) {
+      const text = await file.text();
+      try {
+        const teamYaml = yaml.load(text);
+        if (!teamYaml || !teamYaml.teamName || !Array.isArray(teamYaml.team)) throw new Error("Invalid YAML");
+        // Convert display names back to IDs for state
+        const team = (teamYaml.team || []).map((char) => {
+          const charObj = characters.find(c => c.name === char.character) || { name: char.character, id: "" };
+          return {
+            name: charObj.name,
+            id: charObj.id,
+            costume: char.costume ? (costumes.find(c => c.name === char.costume)?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => char.capsules && char.capsules[i] ? (capsules.find(c => c.name === char.capsules[i])?.id || "") : ""),
+            ai: char.ai ? (aiItems.find(ai => ai.name === char.ai)?.id || "") : ""
+          };
+        }).filter(c => c.id);
+        setMatches((prev) => prev.map((m) =>
+          m.id === matchId
+            ? { ...m, [teamName]: team }
+            : m
+        ));
+        setSuccess(`Imported team details for ${teamName} in match ${matchId}`);
+        setError("");
+      } catch (e) {
+        setError("Invalid YAML file: " + file.name);
+        return;
+      }
+    }
+  };
   // Helper to download a file
   const downloadFile = (filename, content, type = "text/yaml") => {
     console.log("downloadFile called", { filename, type });
@@ -605,6 +655,7 @@ const MatchBuilder = () => {
               collapsed={collapsedMatches[match.id] || false}
               onToggleCollapse={() => setCollapsedMatches((prev) => ({ ...prev, [match.id]: !prev[match.id] }))}
               exportSingleMatch={exportSingleMatch}
+              importSingleMatch={importSingleMatch}
             />
           ))}
         </div>
@@ -628,6 +679,7 @@ const MatchCard = ({
   collapsed,
   onToggleCollapse,
   exportSingleMatch,
+  importSingleMatch,
 }) => {
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
@@ -702,6 +754,10 @@ const MatchCard = ({
               onUpdateCapsule("team1", charIndex, capsuleIndex, value)
             }
             teamColor="blue"
+            matchId={match.id}
+            matchName={match.name}
+            exportSingleTeam={exportSingleTeam}
+            importSingleTeam={importSingleTeam}
           />
           <TeamPanel
             teamName="team2"
@@ -720,6 +776,10 @@ const MatchCard = ({
               onUpdateCapsule("team2", charIndex, capsuleIndex, value)
             }
             teamColor="red"
+            matchId={match.id}
+            matchName={match.name}
+            exportSingleTeam={exportSingleTeam}
+            importSingleTeam={importSingleTeam}
           />
         </div>
       )}
@@ -739,6 +799,11 @@ const TeamPanel = ({
   onUpdateCharacter,
   onUpdateCapsule,
   teamColor,
+  matchId,
+  matchName,
+  exportSingleTeam,
+  importSingleTeam,
+  teamName,
 }) => {
   const [collapsed, setCollapsed] = React.useState(false);
   const colorClasses = teamColor === "blue"
@@ -755,14 +820,35 @@ const TeamPanel = ({
         <h3 className="text-lg font-bold text-orange-300 uppercase tracking-wide drop-shadow relative z-10">
           {displayName}
         </h3>
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="ml-2 p-1 rounded bg-slate-700 text-orange-300 border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all flex items-center justify-center z-20"
-          aria-label={collapsed ? `Expand ${displayName}` : `Collapse ${displayName}`}
-          style={{ width: 24, height: 24 }}
-        >
-          {collapsed ? <Plus size={16} /> : <Minus size={16} />}
-        </button>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => exportSingleTeam(team, displayName, matchName)}
+            className="p-1 rounded bg-purple-700 text-white border border-purple-400 hover:bg-purple-400 hover:text-slate-800 transition-all flex items-center justify-center z-20"
+            aria-label={`Download ${displayName}`}
+            style={{ width: 28, height: 28 }}
+          >
+            <Download size={16} />
+          </button>
+          <label className="p-1 rounded bg-blue-700 text-white border border-blue-400 hover:bg-blue-400 hover:text-slate-800 transition-all flex items-center justify-center z-20 cursor-pointer" aria-label={`Upload ${displayName}`}
+            style={{ width: 28, height: 28 }}>
+            <Upload size={16} />
+            <input
+              type="file"
+              accept=".yaml,application/x-yaml,text/yaml"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => importSingleTeam(e, matchId, teamName)}
+            />
+          </label>
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="ml-2 p-1 rounded bg-slate-700 text-orange-300 border border-orange-400 hover:bg-orange-400 hover:text-slate-800 transition-all flex items-center justify-center z-20"
+            aria-label={collapsed ? `Expand ${displayName}` : `Collapse ${displayName}`}
+            style={{ width: 24, height: 24 }}
+          >
+            {collapsed ? <Plus size={16} /> : <Minus size={16} />}
+          </button>
+        </div>
       </div>
       {!collapsed && (
         <>
