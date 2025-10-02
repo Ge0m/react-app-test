@@ -1,4 +1,6 @@
-/* Removed @tailwind directives. Make sure to include Tailwind via CDN or build process if needed. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
   body {
