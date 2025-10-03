@@ -972,7 +972,7 @@ const MatchCard = ({
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 via-orange-500 to-orange-400"></div>
-      <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-600">
+  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 pb-3 border-b border-slate-600">
         <div className="flex items-center gap-2">
           <button
             onClick={onToggleCollapse}
@@ -990,7 +990,7 @@ const MatchCard = ({
             style={{ caretColor: '#fb923c' }}
           />
         </div>
-        <div className="flex gap-2">
+  <div className="flex flex-wrap gap-2 mt-3 md:mt-0">
           <button
             onClick={() => exportSingleMatch(match)}
             className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-all border border-purple-500 flex items-center justify-center"
@@ -1025,7 +1025,7 @@ const MatchCard = ({
         </div>
       </div>
       {!collapsed && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TeamPanel
             teamName="team1"
             displayName={match.team1Name}
