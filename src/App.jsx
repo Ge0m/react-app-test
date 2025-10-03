@@ -442,6 +442,10 @@ const MatchBuilder = () => {
       while (index >= team.length) {
         team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" });
       }
+      // Debug: log previous and new slot for visibility when importing
+      try {
+        console.debug('replaceCharacter: matchId', matchId, 'teamName', teamName, 'index', index, 'prevSlot', team[index], 'newSlot', normalized);
+      } catch (e) {}
 
       team[index] = normalized;
       return { ...match, [teamName]: team };
