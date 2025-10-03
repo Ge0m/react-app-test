@@ -94,7 +94,24 @@ git checkout -b development
 git push -u origin development
 ```
 
-### 2. Configure Branch Protection Rules (Recommended)
+### 2. Clean Up Repository (Optional)
+
+The repository currently has `node_modules` and `dist` directories tracked in git from previous commits. While the new `.gitignore` prevents new files from being added, you may want to remove these from git history:
+
+```bash
+# Remove node_modules and dist from git (but keep locally)
+git rm -r --cached node_modules dist
+git commit -m "Remove node_modules and dist from git tracking"
+git push origin main
+
+# Then rebuild
+npm install
+npm run build
+```
+
+**Note:** This is optional and can be done later. The `.gitignore` will prevent future builds from being committed.
+
+### 3. Configure Branch Protection Rules (Recommended)
 
 1. Go to: **Repository Settings → Branches → Branch protection rules**
 
@@ -115,7 +132,7 @@ git push -u origin development
    - Select the "Development Branch CI" workflow as required
    - Click "Create"
 
-### 3. Set Default Branch (Optional)
+### 4. Set Default Branch (Optional)
 
 To make new PRs target `development` by default:
 
@@ -124,7 +141,7 @@ To make new PRs target `development` by default:
 3. Select `development`
 4. Click "Update" and confirm
 
-### 4. Test the Workflow
+### 5. Test the Workflow
 
 1. Create a test feature branch:
    ```bash
