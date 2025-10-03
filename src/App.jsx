@@ -207,14 +207,49 @@ const MatchBuilder = () => {
   const [pendingMatchSetup, setPendingMatchSetup] = useState(null);
   const [pendingItemSetup, setPendingItemSetup] = useState(null);
 
-  // Auto-clear error messages after a short duration (7 seconds)
+  // Show error for a duration, then fade it out before clearing
+  const [errorFading, setErrorFading] = useState(false);
   useEffect(() => {
-    if (!error) return;
-    const id = setTimeout(() => {
-      setError("");
-    }, 7000);
-    return () => clearTimeout(id);
+    if (!error) {
+      setErrorFading(false);
+      return;
+    }
+    // display duration before starting fade (ms)
+    const DISPLAY_MS = 7000;
+    // fade duration should match the CSS transition (ms)
+    const FADE_MS = 700;
+
+    setErrorFading(false);
+    const toFade = setTimeout(() => {
+      setErrorFading(true);
+      // after fade completes, clear the error
+      const toClear = setTimeout(() => setError(""), FADE_MS);
+      // cleanup inner timeout if error changes
+      return () => clearTimeout(toClear);
+    }, DISPLAY_MS);
+
+    return () => clearTimeout(toFade);
   }, [error]);
+
+  // Show success for a duration, then fade it out before clearing
+  const [successFading, setSuccessFading] = useState(false);
+  useEffect(() => {
+    if (!success) {
+      setSuccessFading(false);
+      return;
+    }
+    const DISPLAY_MS = 7000;
+    const FADE_MS = 700;
+
+    setSuccessFading(false);
+    const toFade = setTimeout(() => {
+      setSuccessFading(true);
+      const toClear = setTimeout(() => setSuccess(""), FADE_MS);
+      return () => clearTimeout(toClear);
+    }, DISPLAY_MS);
+
+    return () => clearTimeout(toFade);
+  }, [success]);
 
   const matchFileRef = useRef(null);
   const itemFileRef = useRef(null);
@@ -708,13 +743,13 @@ const MatchBuilder = () => {
         </div>
 
         {error && (
-          <div className="bg-red-600 border-2 border-red-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+          <div className={`bg-red-600 border-2 border-red-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg transition-opacity duration-700 ${errorFading ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             ⚠️ {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-600 border-2 border-green-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+          <div className={`bg-green-600 border-2 border-green-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg transition-opacity duration-700 ${successFading ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             ✓ {success}
           </div>
         )}
