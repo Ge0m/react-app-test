@@ -22,8 +22,8 @@ if git show-ref --verify --quiet refs/heads/development; then
             echo "$output"
             echo "This may be due to network issues, authentication problems, or other git errors."
             echo "Please check your remote repository access and try again."
-        elif ! output=$(git merge FETCH_HEAD 2>&1); then
-            echo "Warning: 'git merge FETCH_HEAD' failed."
+        elif ! output=$(git merge origin/development 2>&1); then
+            echo "Warning: 'git merge origin/development' failed."
             echo "Error output:"
             echo "$output"
             echo "This may be due to merge conflicts or another error."
