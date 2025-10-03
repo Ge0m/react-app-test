@@ -2,6 +2,19 @@ import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
 import yaml from "js-yaml";
 
+// Helper: find AI id from either display name or id (case-insensitive, trimmed)
+const findAiIdFromValue = (val, aiItems) => {
+  if (!val && val !== 0) return "";
+  const s = String(val).trim();
+  if (!s) return "";
+  // direct id match
+  const byId = (aiItems || []).find((a) => a.id === s);
+  if (byId) return byId.id;
+  // case-insensitive name match
+  const lower = s.toLowerCase();
+  const byName = (aiItems || []).find((a) => (a.name || "").trim().toLowerCase() === lower);
+  return byName ? byName.id : "";
+};
 
 const MatchBuilder = () => {
   // Helper to download a file
@@ -18,28 +31,93 @@ const MatchBuilder = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Helper to export a single team as YAML (uses display names)
+  const exportSingleTeam = (team, teamName, matchName) => {
+    try {
+      const teamYaml = {
+        matchName: matchName,
+        teamName: teamName,
+        members: team.map((char) => ({
+          character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
+          costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
+          capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+          ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
+        }))
+      };
+      const yamlStr = yaml.dump(teamYaml, { noRefs: true, lineWidth: 120 });
+      downloadFile(`${teamName.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
+      setSuccess(`Exported ${teamName} from ${matchName} as YAML.`);
+    } catch (err) {
+      console.error("exportSingleTeam error", err);
+      setError("Failed to export team as YAML.");
+    }
+  };
+
+  // Helper to import a single team YAML and map display names back to IDs, updating the match state
+  const importSingleTeam = async (event, matchId, teamName) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    for (let file of files) {
+      try {
+        const text = await file.text();
+        const teamYaml = yaml.load(text);
+        if (!teamYaml || !teamYaml.members) throw new Error("Invalid team YAML");
+        const newTeam = (teamYaml.members || []).map((m) => {
+          console.debug('importSingleTeam: incoming member ai:', m.ai, 'aiItems.length:', aiItems.length, 'resolved:', findAiIdFromValue(m.ai, aiItems));
+          const nameVal = (m.character || "").toString().trim();
+          const charObj = characters.find(c => (c.name || "").trim().toLowerCase() === nameVal.toLowerCase()) || { id: "", name: nameVal };
+          return {
+            name: charObj.name,
+            id: charObj.id || "",
+            costume: m.costume ? (costumes.find(c => (c.name || "").trim().toLowerCase() === (m.costume || "").toString().trim().toLowerCase())?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => {
+              if (m.capsules && m.capsules[i]) {
+                const capName = (m.capsules[i] || "").toString().trim();
+                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName.toLowerCase())?.id || "";
+              }
+              return "";
+            }),
+            ai: m.ai ? findAiIdFromValue(m.ai, aiItems) : ""
+          };
+        });
+
+        setMatches((prev) => prev.map((m) =>
+          m.id === matchId
+            ? { ...m, [teamName]: newTeam }
+            : m
+        ));
+        setSuccess(`Imported ${teamName} for match ${matchId}`);
+        setError("");
+      } catch (e) {
+        console.error("importSingleTeam error", e);
+        setError("Invalid YAML file: " + file.name);
+        return;
+      }
+    }
+  };
+
   // Helper to export a single match as YAML
   const exportSingleMatch = (match) => {
     const matchYaml = {
       matchName: match.name,
       team1Name: match.team1Name,
       team2Name: match.team2Name,
-      team1: match.team1.map((char) => ({
-        character: char.name,
+      team1: (match.team1 || []).map((char) => ({
+        character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-        capsules: char.capsules.filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
         ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
       })),
-      team2: match.team2.map((char) => ({
-        character: char.name,
+      team2: (match.team2 || []).map((char) => ({
+        character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-        capsules: char.capsules.filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
         ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
       }))
     };
     const yamlStr = yaml.dump(matchYaml, { noRefs: true, lineWidth: 120 });
     console.log("exportSingleMatch called", { matchYaml, yamlStr });
-    downloadFile(`Match_${match.name.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
+    downloadFile(`${match.name.replace(/\s+/g, "_")}.yaml`, yamlStr, "text/yaml");
     setSuccess(`Exported match ${match.name} as YAML.`);
   };
 
@@ -54,25 +132,41 @@ const MatchBuilder = () => {
         if (!matchYaml || !matchYaml.matchName) throw new Error("Invalid YAML");
         // Convert display names back to IDs for state
         const team1 = (matchYaml.team1 || []).map((char) => {
-          const charObj = characters.find(c => c.name === char.character) || { name: char.character, id: "" };
+          console.debug('importSingleMatch: team1 member ai:', char.ai, 'aiItems.length:', aiItems.length, 'resolved:', findAiIdFromValue(char.ai, aiItems));
+          const nameVal = (char.character || "").toString().trim();
+          const charObj = characters.find(c => (c.name || "").trim().toLowerCase() === nameVal.toLowerCase()) || { name: nameVal, id: "" };
           return {
             name: charObj.name,
             id: charObj.id,
-            costume: char.costume ? (costumes.find(c => c.name === char.costume)?.id || "") : "",
-            capsules: Array(7).fill("").map((_, i) => char.capsules && char.capsules[i] ? (capsules.find(c => c.name === char.capsules[i])?.id || "") : ""),
-            ai: char.ai ? (aiItems.find(ai => ai.name === char.ai)?.id || "") : ""
+            costume: char.costume ? (costumes.find(c => (c.name || "").trim().toLowerCase() === (char.costume || "").toString().trim().toLowerCase())?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => {
+              if (char.capsules && char.capsules[i]) {
+                const capName = (char.capsules[i] || "").toString().trim();
+                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName.toLowerCase())?.id || "";
+              }
+              return "";
+            }),
+            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : ""
           };
-        }).filter(c => c.id);
+        });
         const team2 = (matchYaml.team2 || []).map((char) => {
-          const charObj = characters.find(c => c.name === char.character) || { name: char.character, id: "" };
+          console.debug('importSingleMatch: team2 member ai:', char.ai, 'aiItems.length:', aiItems.length, 'resolved:', findAiIdFromValue(char.ai, aiItems));
+          const nameVal = (char.character || "").toString().trim();
+          const charObj = characters.find(c => (c.name || "").trim().toLowerCase() === nameVal.toLowerCase()) || { name: nameVal, id: "" };
           return {
             name: charObj.name,
             id: charObj.id,
-            costume: char.costume ? (costumes.find(c => c.name === char.costume)?.id || "") : "",
-            capsules: Array(7).fill("").map((_, i) => char.capsules && char.capsules[i] ? (capsules.find(c => c.name === char.capsules[i])?.id || "") : ""),
-            ai: char.ai ? (aiItems.find(ai => ai.name === char.ai)?.id || "") : ""
+            costume: char.costume ? (costumes.find(c => (c.name || "").trim().toLowerCase() === (char.costume || "").toString().trim().toLowerCase())?.id || "") : "",
+            capsules: Array(7).fill("").map((_, i) => {
+              if (char.capsules && char.capsules[i]) {
+                const capName = (char.capsules[i] || "").toString().trim();
+                return capsules.find(c => (c.name || "").trim().toLowerCase() === capName.toLowerCase())?.id || "";
+              }
+              return "";
+            }),
+            ai: char.ai ? findAiIdFromValue(char.ai, aiItems) : ""
           };
-        }).filter(c => c.id);
+        });
         setMatches((prev) => prev.map((m) =>
           m.id === matchId
             ? { ...m, team1, team2 }
@@ -179,6 +273,20 @@ const MatchBuilder = () => {
       console.error("Failed to load capsules:", err);
     }
   };
+
+    // Helper: find AI id from either display name or id (case-insensitive, trimmed)
+    const findAiIdFromValue = (val) => {
+      if (!val && val !== 0) return "";
+      const s = String(val).trim();
+      if (!s) return "";
+      // direct id match
+      const byId = aiItems.find((a) => a.id === s);
+      if (byId) return byId.id;
+      // case-insensitive name match
+      const lower = s.toLowerCase();
+      const byName = aiItems.find((a) => (a.name || "").trim().toLowerCase() === lower);
+      return byName ? byName.id : "";
+    };
 
   const addMatch = () => {
     const newMatch = {
@@ -301,6 +409,18 @@ const MatchBuilder = () => {
         return match;
       })
     );
+  };
+
+  // Allow renaming a match
+  const updateMatchName = (matchId, newName) => {
+    setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, name: newName } : m)));
+  };
+
+  // Allow renaming a team's display name (team1Name / team2Name)
+  const updateTeamDisplayName = (matchId, teamKey, newName) => {
+    // teamKey expected to be 'team1' or 'team2'
+    const field = teamKey === 'team1' ? 'team1Name' : 'team2Name';
+    setMatches((prev) => prev.map((m) => (m.id === matchId ? { ...m, [field]: newName } : m)));
   };
 
   const exportMatches = () => {
@@ -512,13 +632,10 @@ const MatchBuilder = () => {
           <div className="absolute inset-0 bg-gradient-to-r from-orange-400/5 to-orange-400/10"></div>
           <div className="relative z-10">
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-300 via-orange-400 to-orange-300 text-center mb-1 tracking-tight drop-shadow-lg">
-              DRAGON BALL
-            </h1>
-            <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-blue-400 to-blue-300 text-center mb-1 tracking-tight drop-shadow-lg">
-              SPARKING! ZERO LEAGUE
+              DRAGON BALL Z LEAGUE
             </h1>
             <p className="text-xl font-bold text-blue-300 text-center tracking-widest drop-shadow">
-              MATCH BUILDER
+              SPARKING! ZERO MATCH BUILDER
             </p>
           </div>
         </div>
@@ -609,10 +726,121 @@ const MatchBuilder = () => {
               importSingleMatch={importSingleMatch}
               exportSingleTeam={exportSingleTeam}
               importSingleTeam={importSingleTeam}
+              onRenameMatch={(newName) => updateMatchName(match.id, newName)}
+              onRenameTeam1={(newName) => updateTeamDisplayName(match.id, 'team1', newName)}
+              onRenameTeam2={(newName) => updateTeamDisplayName(match.id, 'team2', newName)}
             />
           ))}
         </div>
       </div>
+    </div>
+  );
+};
+
+// Small accessible Combobox component (keyboard navigation, filtering)
+const Combobox = ({
+  valueId,
+  items,
+  placeholder,
+  onSelect, // (id, name)
+  getName = (it) => it.name,
+  disabled = false,
+}) => {
+  const [input, setInput] = useState(() => {
+    const found = items.find((it) => it.id === valueId);
+    return found ? getName(found) : "";
+  });
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const listRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const found = items.find((it) => it.id === valueId);
+    setInput(found ? getName(found) : input === "" ? "" : input);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueId, items]);
+
+  const filtered = input
+    ? items.filter((it) => getName(it).toLowerCase().includes(input.toLowerCase()))
+    : items.slice(0, 50);
+
+  const openList = () => {
+    if (!disabled) setOpen(true);
+  };
+
+  const closeList = () => {
+    setOpen(false);
+    setHighlight(-1);
+  };
+
+  const commitSelection = (item) => {
+    if (item) {
+      setInput(getName(item));
+      onSelect(item.id, getName(item));
+    } else {
+      // no match -> clear
+      setInput("");
+      onSelect('', '');
+    }
+    closeList();
+    inputRef.current?.blur();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      openList();
+      setHighlight((h) => Math.min(h + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      openList();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (open && highlight >= 0 && highlight < filtered.length) {
+        commitSelection(filtered[highlight]);
+      } else {
+        // try exact match
+        const exact = items.find((it) => getName(it).toLowerCase() === input.toLowerCase());
+        commitSelection(exact || null);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeList();
+    }
+  };
+
+  return (
+    <div className="relative" onKeyDown={onKeyDown}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={input}
+        onChange={(e) => { setInput(e.target.value); openList(); }}
+        onFocus={openList}
+        onBlur={() => { setTimeout(closeList, 150); }}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all ${disabled ? 'opacity-60' : ''}`}
+        style={{ caretColor: '#fb923c' }}
+        aria-autocomplete="list"
+        aria-expanded={open}
+      />
+      {open && filtered.length > 0 && (
+        <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
+          {filtered.map((it, idx) => (
+            <li
+              key={it.id || idx}
+              onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
+              onMouseEnter={() => setHighlight(idx)}
+              className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
+            >
+              {getName(it)}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
@@ -635,6 +863,9 @@ const MatchCard = ({
   importSingleMatch,
   exportSingleTeam,
   importSingleTeam,
+  onRenameMatch,
+  onRenameTeam1,
+  onRenameTeam2,
 }) => {
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
@@ -652,8 +883,9 @@ const MatchCard = ({
           <input
             type="text"
             value={match.name}
-            onChange={(e) => {}}
+            onChange={(e) => typeof onRenameMatch === 'function' ? onRenameMatch(e.target.value) : null}
             className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-300 to-orange-400 bg-transparent border-b-2 border-transparent hover:border-orange-400 focus:border-orange-400 outline-none px-2 py-1 rounded transition-all"
+            style={{ caretColor: '#fb923c' }}
           />
         </div>
         <div className="flex gap-2">
@@ -713,6 +945,7 @@ const MatchCard = ({
             matchName={match.name}
             exportSingleTeam={exportSingleTeam}
             importSingleTeam={importSingleTeam}
+            onRenameTeam={onRenameTeam1}
           />
           <TeamPanel
             teamName="team2"
@@ -735,6 +968,7 @@ const MatchCard = ({
             matchName={match.name}
             exportSingleTeam={exportSingleTeam}
             importSingleTeam={importSingleTeam}
+            onRenameTeam={onRenameTeam2}
           />
         </div>
       )}
@@ -758,6 +992,7 @@ const TeamPanel = ({
   matchName,
   exportSingleTeam,
   importSingleTeam,
+  onRenameTeam,
   teamName,
 }) => {
   if (typeof exportSingleTeam !== "function") {
@@ -771,13 +1006,29 @@ const TeamPanel = ({
     ? "from-slate-700 to-slate-600 border-slate-500 hover:from-slate-600 hover:to-slate-500"
     : "from-slate-700 to-slate-600 border-slate-500 hover:from-slate-600 hover:to-slate-500";
 
+  const [localName, setLocalName] = React.useState(displayName || '');
+  React.useEffect(() => {
+    setLocalName(displayName || '');
+  }, [displayName]);
+
+  const handleRename = (e) => {
+    const v = e?.target?.value;
+    setLocalName(v);
+    if (typeof onRenameTeam === 'function') onRenameTeam(v);
+  };
+
   return (
-    <div className={`bg-gradient-to-br ${colorClasses} rounded-xl p-4 shadow-lg border-2 relative overflow-hidden`}>
+    <div className={`bg-gradient-to-br ${colorClasses} rounded-xl p-4 shadow-lg border-2 relative overflow-visible`}>
       <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12 pointer-events-none"></div>
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-lg font-bold text-orange-300 uppercase tracking-wide drop-shadow relative z-10">
-          {displayName}
-        </h3>
+        <div>
+          <input
+            type="text"
+            value={localName}
+            onChange={handleRename}
+            className="text-lg font-bold text-orange-300 uppercase tracking-wide drop-shadow relative z-10 bg-transparent border-b border-transparent focus:border-orange-400 outline-none px-1 py-0"
+          />
+        </div>
         <div className="flex gap-2 items-center">
           <button
             onClick={() => exportSingleTeam(team, displayName, matchName)}
@@ -814,6 +1065,10 @@ const TeamPanel = ({
             {team.map((char, index) => (
               <CharacterSlot
                 key={index}
+                index={index}
+                teamName={teamName}
+                matchId={matchId}
+                matchName={matchName}
                 character={char}
                 characters={characters}
                 capsules={capsules}
@@ -829,7 +1084,7 @@ const TeamPanel = ({
           </div>
           <button
             onClick={onAddCharacter}
-            className={`w-full mt-4 bg-gradient-to-r ${buttonColor} text-white py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border-2 relative z-10`}
+            className={`w-full mt-4 bg-gradient-to-r ${buttonColor} text-white py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border-2 relative z-0`}
           >
             <Plus className="inline mr-1" size={16} />
             ADD CHARACTER
@@ -841,6 +1096,10 @@ const TeamPanel = ({
 };
     
 const CharacterSlot = ({
+  index,
+  teamName,
+  matchId,
+  matchName,
   character,
   characters,
   capsules,
@@ -854,46 +1113,37 @@ const CharacterSlot = ({
   const charCostumes = costumes.filter(
     (c) => c.exclusiveFor === character.name
   );
+  const fileInputRef = React.useRef(null);
 
   return (
-    <div className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg p-3 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-500 flex flex-col">
+  <div className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg p-3 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-500 flex flex-col relative z-10">
       <div className="flex justify-between items-start mb-3">
         <div className="flex-1 space-y-2">
           <div>
             <label className="block text-xs font-semibold text-orange-300 mb-1 uppercase tracking-wide">
               Character
             </label>
-            <select
-              value={character.id}
-              onChange={(e) => onUpdate("id", e.target.value)}
-              className="w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all"
-            >
-              <option value="">Select Character</option>
-              {characters.map((char) => (
-                <option key={char.id} value={char.id}>
-                  {char.name}
-                </option>
-              ))}
-            </select>
+            <Combobox
+              valueId={character.id}
+              items={characters}
+              getName={(c) => c.name}
+              placeholder="Type or select character"
+              onSelect={(id) => onUpdate('id', id)}
+            />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-purple-300 mb-1 uppercase tracking-wide">
               Costume
             </label>
-            <select
-              value={character.costume}
-              onChange={(e) => onUpdate("costume", e.target.value)}
-              className="w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 transition-all"
+            <Combobox
+              valueId={character.costume}
+              items={charCostumes}
+              getName={(c) => c.name}
+              placeholder="Type or select costume"
+              onSelect={(id) => onUpdate('costume', id)}
               disabled={!character.name}
-            >
-              <option value="">Default Costume</option>
-              {charCostumes.map((costume) => (
-                <option key={costume.id} value={costume.id}>
-                  {costume.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
         </div>
 
@@ -914,45 +1164,113 @@ const CharacterSlot = ({
             Capsules
           </label>
           {character.capsules.map((capsule, i) => (
-            <select
-              key={i}
-              value={capsule}
-              onChange={(e) => onUpdateCapsule(i, e.target.value)}
-              className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition-all"
-            >
-              <option value="">Capsule {i + 1}</option>
-              {capsules.map((cap) => (
-                <option key={cap.id} value={cap.id}>
-                  {cap.name}
-                </option>
-              ))}
-            </select>
+            <div key={i} className="mb-1">
+              <Combobox
+                valueId={capsule}
+                items={capsules}
+                getName={(c) => c.name}
+                placeholder={`Capsule ${i + 1}`}
+                onSelect={(id) => onUpdateCapsule(i, id)}
+              />
+            </div>
           ))}
 
           <div className="mt-2 pt-2 border-t border-slate-500">
             <label className="block text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wide">
               AI Strategy
             </label>
-            <select
-              value={character.ai}
-              onChange={(e) => onUpdate("ai", e.target.value)}
-              className="w-full px-2 py-1 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/50 transition-all"
-            >
-              <option value="">Select AI Strategy</option>
-              {aiItems.map((ai) => (
-                <option key={ai.id} value={ai.id}>
-                  {ai.name}
-                </option>
-              ))}
-            </select>
+            <Combobox
+              valueId={character.ai}
+              items={aiItems}
+              getName={(a) => a.name}
+              placeholder="Type or select AI strategy"
+              onSelect={(id) => onUpdate('ai', id)}
+            />
           </div>
-          <div className="flex justify-end">
-            <button
-              onClick={onRemove}
-              className="mt-4 px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block"
-            >
-              Remove
-            </button>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    // Export current character build as YAML
+                    const build = {
+                      character: character.name || (characters.find(c => c.id === character.id)?.name || ''),
+                      costume: character.costume ? (costumes.find(c => c.id === character.costume)?.name || '') : '',
+                      capsules: (character.capsules || []).map(cid => capsules.find(c => c.id === cid)?.name || ''),
+                      ai: character.ai ? (aiItems.find(a => a.id === character.ai)?.name || '') : '',
+                      matchName: matchName,
+                      teamName: teamName,
+                      slotIndex: index,
+                    };
+                    const yamlStr = yaml.dump(build, { noRefs: true, lineWidth: 120 });
+                    const blob = new Blob([yamlStr], { type: 'text/yaml' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const charName = character.name || (characters.find(c => c.id === character.id)?.name || '');
+                    const safe = charName && charName.trim() !== '' ? charName.replace(/\s+/g, '_') : 'Blank';
+                    a.download = `${safe}.yaml`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-purple-500 inline-block"
+                >
+                  Export
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".yaml,application/x-yaml,text/yaml"
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const files = e.target.files; if (!files || !files[0]) return; try {
+                      const text = await files[0].text();
+                      const data = yaml.load(text);
+                      if (!data) throw new Error('Invalid YAML');
+                      // map names back to ids
+                      if (data.character) {
+                        const charObj = characters.find(c => c.name === data.character) || { id: '' };
+                        onUpdate('id', charObj.id || '');
+                      }
+                      if (data.costume) {
+                        const costumeObj = costumes.find(c => c.name === data.costume) || { id: '' };
+                        onUpdate('costume', costumeObj.id || '');
+                      }
+                      if (data.ai) {
+                        const aiId = findAiIdFromValue(data.ai, aiItems);
+                        onUpdate('ai', aiId);
+                      }
+                      // map capsules names -> ids
+                      if (Array.isArray(data.capsules)) {
+                        const caps = Array(7).fill('').map((_, i) => {
+                          if (!data.capsules[i]) return '';
+                          const found = capsules.find(cap => cap.name === data.capsules[i]);
+                          return found ? found.id : '';
+                        });
+                        caps.forEach((cid, ci) => onUpdateCapsule(ci, cid));
+                      }
+                    } catch (err) { console.error('import character build failed', err); }
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-blue-400 inline-block"
+                >
+                  Import
+                </button>
+            </div>
+
+            <div>
+              <button
+                onClick={onRemove}
+                className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block"
+              >
+                Remove
+              </button>
+            </div>
           </div>
         </div>
       )}

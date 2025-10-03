@@ -1,8 +1,8 @@
 {
-  "name": "dbz-match-builder",
+  "name": "sz-match-builder",
   "version": "1.0.0",
   "private": true,
-  "homepage": "http://Ge0m.github.io/react-app-test",
+  "homepage": "http://Ge0m.github.io/SZMatchBuilder",
   "dependencies": {
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.263.1",
