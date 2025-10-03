@@ -816,7 +816,8 @@ const Combobox = ({
 
   useEffect(() => {
     const found = items.find((it) => it.id === valueId);
-    setInput(found ? getName(found) : input === "" ? "" : input);
+    // If we have a matching item, show its name; otherwise clear the input so stale names don't persist
+    setInput(found ? getName(found) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valueId, items]);
 
