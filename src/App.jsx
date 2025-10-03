@@ -412,6 +412,17 @@ const MatchBuilder = () => {
     );
   };
 
+  // Replace entire character slot atomically to avoid merge/race conditions
+  const replaceCharacter = (matchId, teamName, index, slotObj) => {
+    setMatches(prev => prev.map(match => {
+      if (match.id !== matchId) return match;
+      const team = [...match[teamName]];
+      if (index < 0 || index >= team.length) return match;
+      team[index] = slotObj;
+      return { ...match, [teamName]: team };
+    }));
+  };
+
   const updateCapsule = (matchId, teamName, charIndex, capsuleIndex, value) => {
     setMatches(
       matches.map((match) => {
@@ -729,6 +740,7 @@ const MatchBuilder = () => {
               onUpdateCharacter={(teamName, index, field, value) =>
                 updateCharacter(match.id, teamName, index, field, value)
               }
+              onReplaceCharacter={(teamName, index, slotObj) => replaceCharacter(match.id, teamName, index, slotObj)}
               onUpdateCapsule={(teamName, charIndex, capsuleIndex, value) =>
                 updateCapsule(
                   match.id,
@@ -875,6 +887,7 @@ const MatchCard = ({
   onRemoveCharacter,
   onUpdateCharacter,
   onUpdateCapsule,
+  onReplaceCharacter,
   collapsed,
   onToggleCollapse,
   exportSingleMatch,
@@ -964,6 +977,7 @@ const MatchCard = ({
             exportSingleTeam={exportSingleTeam}
             importSingleTeam={importSingleTeam}
             onRenameTeam={onRenameTeam1}
+            onReplaceCharacter={(index, slotObj) => onReplaceCharacter('team1', index, slotObj)}
           />
           <TeamPanel
             teamName="team2"
@@ -987,6 +1001,7 @@ const MatchCard = ({
             exportSingleTeam={exportSingleTeam}
             importSingleTeam={importSingleTeam}
             onRenameTeam={onRenameTeam2}
+            onReplaceCharacter={(index, slotObj) => onReplaceCharacter('team2', index, slotObj)}
           />
         </div>
       )}
@@ -1012,6 +1027,7 @@ const TeamPanel = ({
   importSingleTeam,
   onRenameTeam,
   teamName,
+  onReplaceCharacter,
 }) => {
   if (typeof exportSingleTeam !== "function") {
     console.warn("TeamPanel: exportSingleTeam prop is not a function!", exportSingleTeam);
@@ -1097,6 +1113,7 @@ const TeamPanel = ({
                 onUpdateCapsule={(capsuleIndex, value) =>
                   onUpdateCapsule(index, capsuleIndex, value)
                 }
+                onReplaceCharacter={(slotObj) => onReplaceCharacter(index, slotObj)}
               />
             ))}
           </div>
@@ -1126,6 +1143,7 @@ const CharacterSlot = ({
   onRemove,
   onUpdate,
   onUpdateCapsule,
+  onReplaceCharacter,
 }) => {
   const [collapsed, setCollapsed] = React.useState(false);
   const charCostumes = costumes.filter(
@@ -1244,36 +1262,50 @@ const CharacterSlot = ({
                   style={{ display: 'none' }}
                   onChange={async (e) => {
                     const files = e.target.files; if (!files || !files[0]) return; try {
-                      // clear current slot first
-                      onUpdate('id', '');
-                      onUpdate('costume', '');
-                      onUpdate('ai', '');
-                      // clear all capsules
-                      Array(7).fill('').forEach((_, i) => onUpdateCapsule(i, ''));
                       const text = await files[0].text();
                       const data = yaml.load(text);
                       if (!data) throw new Error('Invalid YAML');
-                      // map names back to ids
+
+                      // Build a full slot object (ids) and replace atomically
+                      const slot = {
+                        name: '',
+                        id: '',
+                        costume: '',
+                        capsules: Array(7).fill(''),
+                        ai: '',
+                      };
+
                       if (data.character) {
-                        const charObj = characters.find(c => c.name === data.character) || { id: '' };
-                        onUpdate('id', charObj.id || '');
+                        const charObj = characters.find(c => (c.name || '').toString().trim().toLowerCase() === data.character.toString().trim().toLowerCase());
+                        slot.name = data.character.toString();
+                        slot.id = charObj ? charObj.id : '';
                       }
+
                       if (data.costume) {
-                        const costumeObj = costumes.find(c => c.name === data.costume) || { id: '' };
-                        onUpdate('costume', costumeObj.id || '');
+                        const costumeObj = costumes.find(c => (c.name || '').toString().trim().toLowerCase() === data.costume.toString().trim().toLowerCase());
+                        slot.costume = costumeObj ? costumeObj.id : '';
                       }
+
                       if (data.ai) {
-                        const aiId = findAiIdFromValue(data.ai, aiItems);
-                        onUpdate('ai', aiId);
+                        slot.ai = findAiIdFromValue(data.ai, aiItems);
                       }
-                      // map capsules names -> ids
+
                       if (Array.isArray(data.capsules)) {
-                        const caps = Array(7).fill('').map((_, i) => {
+                        slot.capsules = Array(7).fill('').map((_, i) => {
                           if (!data.capsules[i]) return '';
-                          const found = capsules.find(cap => cap.name === data.capsules[i]);
+                          const found = capsules.find(cap => (cap.name || '').toString().trim().toLowerCase() === data.capsules[i].toString().trim().toLowerCase());
                           return found ? found.id : '';
                         });
-                        caps.forEach((cid, ci) => onUpdateCapsule(ci, cid));
+                      }
+
+                      if (typeof onReplaceCharacter === 'function') {
+                        onReplaceCharacter(slot);
+                      } else {
+                        // Fallback: apply updates individually (legacy)
+                        onUpdate('id', slot.id);
+                        onUpdate('costume', slot.costume);
+                        slot.capsules.forEach((cid, ci) => onUpdateCapsule(ci, cid));
+                        onUpdate('ai', slot.ai);
                       }
                     } catch (err) { console.error('import character build failed', err); }
                     try { e.target.value = null; } catch (e) {}
