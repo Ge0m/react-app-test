@@ -161,8 +161,10 @@ git checkout development && git pull
 git checkout -b feature/my-feature
 
 # Commit and push
-# Stage only intended files. Review changes with `git status` before committing.
-git add file1.js file2.css && git commit -m "message"
+# Stage only intended files.
+git add file1.js file2.css
+git status  # Review staged changes before committing
+git commit -m "message"
 git push -u origin feature/my-feature
 
 # Update from development
