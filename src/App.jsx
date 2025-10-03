@@ -55,11 +55,9 @@ const MatchBuilder = () => {
 
   // Helper to import a single team YAML and map display names back to IDs, updating the match state
   const importSingleTeam = async (event, matchId, teamName) => {
-    // Clear the target team first so previous selections are removed
-    const clearTeam = (mId, tName) => {
-      setMatches(prev => prev.map(m => m.id === mId ? { ...m, [tName]: [] } : m));
-    };
-    clearTeam(matchId, teamName);
+    // Clear the target team first so previous selections are removed — use 5 empty slots
+    const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
+    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, [teamName]: emptySlots() } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -129,8 +127,9 @@ const MatchBuilder = () => {
 
   // Helper to import a single match
   const importSingleMatch = async (event, matchId) => {
-    // Clear both teams for this match before importing
-    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, team1: [], team2: [] } : m));
+    // Clear both teams for this match before importing (5 empty slots each)
+    const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
+    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, team1: emptySlots(), team2: emptySlots() } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
