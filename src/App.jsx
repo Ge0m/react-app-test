@@ -869,7 +869,7 @@ const Combobox = ({
     : items.slice(0, 50);
 
   // Floating UI: robust positioning, flipping, and auto-updates
-  const { x, y, reference, floating, strategy, refs, update } = useFloating({
+  const { x, y, strategy, refs, update, floatingStyles } = useFloating({
     placement: 'bottom-start',
     middleware: [
       offset(6),
@@ -939,10 +939,10 @@ const Combobox = ({
   useEffect(() => {
     if (!open) return;
     // ensure reference is registered
-    reference(inputRef.current);
+    try { refs.setReference?.(inputRef.current); } catch (e) {}
     // update() will be called automatically by autoUpdate, but call once to be sure
     if (typeof update === 'function') update();
-  }, [open, reference, update]);
+  }, [open, refs, update]);
 
   return (
     <div className="relative" onKeyDown={onKeyDown}>
@@ -961,9 +961,9 @@ const Combobox = ({
         aria-expanded={open}
       />
       {open && filtered.length > 0 && (
-        (typeof document !== 'undefined' && x != null && y != null)
+        (typeof document !== 'undefined')
           ? createPortal(
-            <ul ref={floating} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={{ position: strategy, left: x ?? 0, top: y ?? 0 }}>
+            <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
               {filtered.map((it, idx) => (
                 <li
                   key={it.id || idx}
