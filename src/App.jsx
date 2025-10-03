@@ -758,7 +758,7 @@ const MatchBuilder = () => {
           >
             <span className="flex items-center">
               <Plus className="mr-2" size={18} />
-              ADD MATCH
+              <span className="hidden sm:inline">ADD MATCH</span>
             </span>
           </button>
           <button
@@ -767,7 +767,7 @@ const MatchBuilder = () => {
           >
             <span className="flex items-center">
               <Download className="mr-2" size={18} />
-              EXPORT ALL
+              <span className="hidden sm:inline">EXPORT ALL</span>
             </span>
           </button>
           <button
@@ -776,12 +776,12 @@ const MatchBuilder = () => {
           >
             <span className="flex items-center">
               <Trash2 className="mr-2" size={18} />
-              CLEAR ALL
+              <span className="hidden sm:inline">CLEAR ALL</span>
             </span>
           </button>
           <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center">
             <Upload className="mr-2" size={18} />
-            IMPORT MATCHES
+            <span className="hidden sm:inline">IMPORT MATCHES</span>
             <input
               type="file"
               accept="application/json"
@@ -997,11 +997,13 @@ const MatchCard = ({
             aria-label="Download Match"
           >
             <Download size={18} />
+            <span className="sr-only">Download Match</span>
           </button>
           <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center justify-center"
             aria-label="Upload Match"
           >
             <Upload size={18} />
+            <span className="sr-only">Upload Match</span>
               <input
                 type="file"
                 accept=".yaml,application/x-yaml,text/yaml"
@@ -1012,15 +1014,19 @@ const MatchCard = ({
           </label>
           <button
             onClick={onDuplicate}
-            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500"
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500 flex items-center justify-center"
+            aria-label="Duplicate Match"
           >
             <Copy size={16} />
+            <span className="hidden sm:inline ml-2">DUP</span>
           </button>
           <button
             onClick={onRemove}
-            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500"
+            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500 flex items-center justify-center"
+            aria-label="Remove Match"
           >
             <Trash2 size={16} />
+            <span className="hidden sm:inline ml-2">REMOVE</span>
           </button>
         </div>
       </div>
@@ -1142,10 +1148,12 @@ const TeamPanel = ({
             style={{ width: 28, height: 28 }}
           >
             <Download size={16} />
+            <span className="sr-only">Download {displayName}</span>
           </button>
           <label className="p-1 rounded bg-blue-700 text-white border border-blue-400 hover:bg-blue-400 hover:text-slate-800 transition-all flex items-center justify-center z-20 cursor-pointer" aria-label={`Upload ${displayName}`}
             style={{ width: 28, height: 28 }}>
             <Upload size={16} />
+            <span className="sr-only">Upload {displayName}</span>
             <input
               type="file"
               accept=".yaml,application/x-yaml,text/yaml"
@@ -1386,21 +1394,25 @@ const CharacterSlot = ({
                     try { e.target.value = null; } catch (e) {}
                   }}
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-blue-400 inline-block"
-                >
-                  Import
-                </button>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-blue-400 inline-flex items-center"
+                        aria-label="Import character build"
+                      >
+                        <Upload size={14} />
+                        <span className="hidden sm:inline ml-2">Import</span>
+                      </button>
             </div>
 
             <div>
-              <button
-                onClick={onRemove}
-                className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block"
-              >
-                Remove
-              </button>
+                <button
+                  onClick={onRemove}
+                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-flex items-center"
+                  aria-label="Remove character"
+                >
+                  <Trash2 size={14} />
+                  <span className="hidden sm:inline ml-2">Remove</span>
+                </button>
             </div>
           </div>
         </div>
