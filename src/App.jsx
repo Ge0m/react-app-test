@@ -597,8 +597,8 @@ const MatchBuilder = () => {
             let ai = "";
             settings.forEach((item) => {
               if (!item.key || item.key === "None") return;
-              if (item.key.startsWith("COSTUME_")) costume = item.key;
-              else if (item.key.startsWith("AI_")) ai = item.key;
+              if (item.key.startsWith("00_1_")) costume = item.key;
+              else if (item.key.startsWith("00_7_")) ai = item.key;
               else capsules.push(item.key);
             });
             char.capsules = [...capsules, ...Array(7 - capsules.length).fill("")].slice(0, 7);
