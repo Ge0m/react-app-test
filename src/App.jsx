@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { createPortal } from 'react-dom';
+import { useFloating, offset, flip, shift, size, autoUpdate } from '@floating-ui/react-dom';
 import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
 import yaml from "js-yaml";
 
@@ -867,19 +868,26 @@ const Combobox = ({
     ? items.filter((it) => getName(it).toLowerCase().includes(input.toLowerCase()))
     : items.slice(0, 50);
 
-  // Portal positioning so dropdown can escape parent overflow and stacking contexts
-  const [portalStyle, setPortalStyle] = useState(null);
+  // Floating UI: robust positioning, flipping, and auto-updates
+  const { x, y, reference, floating, strategy, refs, update } = useFloating({
+    placement: 'bottom-start',
+    middleware: [
+      offset(6),
+      flip(),
+      shift(),
+      size({
+        apply({ rects, availableHeight, elements }) {
+          Object.assign(elements.floating.style, {
+            width: `${rects.reference.width}px`,
+            maxHeight: `${Math.min(availableHeight, 400)}px`,
+            overflow: 'auto',
+          });
+        },
+      }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
 
-  const updatePortal = () => {
-    const el = inputRef.current;
-    if (!el) return setPortalStyle(null);
-    const rect = el.getBoundingClientRect();
-    setPortalStyle({
-      left: rect.left + window.scrollX,
-      top: rect.bottom + window.scrollY,
-      width: rect.width,
-    });
-  };
 
   const openList = () => {
     if (!disabled) setOpen(true);
@@ -927,26 +935,19 @@ const Combobox = ({
     }
   };
 
-  // update portal position when open or when input changes
+  // keep floating position updated when open
   useEffect(() => {
     if (!open) return;
-    updatePortal();
-    const onWin = () => updatePortal();
-    window.addEventListener('resize', onWin);
-    window.addEventListener('scroll', onWin, true);
-    const obs = new MutationObserver(onWin);
-    if (inputRef.current) obs.observe(document.body, { attributes: true, childList: true, subtree: true });
-    return () => {
-      window.removeEventListener('resize', onWin);
-      window.removeEventListener('scroll', onWin, true);
-      try { obs.disconnect(); } catch (e) {}
-    };
-  }, [open]);
+    // ensure reference is registered
+    reference(inputRef.current);
+    // update() will be called automatically by autoUpdate, but call once to be sure
+    if (typeof update === 'function') update();
+  }, [open, reference, update]);
 
   return (
     <div className="relative" onKeyDown={onKeyDown}>
       <input
-        ref={inputRef}
+        ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
         type="text"
         value={input}
         onChange={(e) => { setInput(e.target.value); openList(); }}
@@ -960,10 +961,9 @@ const Combobox = ({
         aria-expanded={open}
       />
       {open && filtered.length > 0 && (
-        // render dropdown in a portal so it isn't clipped or hidden by parent stacking/overflow
-        (typeof document !== 'undefined' && portalStyle)
+        (typeof document !== 'undefined' && x != null && y != null)
           ? createPortal(
-            <ul className="absolute z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={{ left: portalStyle.left, top: portalStyle.top, width: portalStyle.width }}>
+            <ul ref={floating} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={{ position: strategy, left: x ?? 0, top: y ?? 0 }}>
               {filtered.map((it, idx) => (
                 <li
                   key={it.id || idx}

@@ -4,6 +4,7 @@
   "private": true,
   "homepage": "http://Ge0m.github.io/SZMatchBuilder",
   "dependencies": {
+    "@floating-ui/react-dom": "^2.1.6",
     "js-yaml": "^4.1.0",
     "lucide-react": "^0.263.1",
     "react": "^18.2.0",
