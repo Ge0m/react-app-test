@@ -834,7 +834,7 @@ const TeamPanel = ({
     </div>
   );
 };
-
+    
 const CharacterSlot = ({
   character,
   characters,
