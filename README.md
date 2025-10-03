@@ -2,6 +2,6 @@
 
 DBZ Sparking Zero Match Builder
 
-## Main
+## Development
 
 This repository uses a `Development` branch for ongoing development work. The `main` branch contains stable releases.
