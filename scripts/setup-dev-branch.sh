@@ -14,17 +14,24 @@ if git show-ref --verify --quiet refs/heads/development; then
     echo "Development branch already exists locally."
     echo "Checking out development branch..."
     git checkout development
-    if ! output=$(git fetch origin development 2>&1); then
-        echo "Warning: 'git fetch origin development' failed."
-        echo "Error output:"
-        echo "$output"
-        echo "This may be because the branch does not exist on the remote yet, or due to another error."
-        echo "If the branch does not exist remotely, it will be pushed for the first time in the next step."
-    elif ! output=$(git merge FETCH_HEAD 2>&1); then
-        echo "Warning: 'git merge FETCH_HEAD' failed."
-        echo "Error output:"
-        echo "$output"
-        echo "This may be due to merge conflicts or another error."
+    # Check if remote development branch exists before fetching
+    if git ls-remote --heads origin development | grep -q development; then
+        if ! output=$(git fetch origin development 2>&1); then
+            echo "Warning: 'git fetch origin development' failed."
+            echo "Error output:"
+            echo "$output"
+            echo "This may be due to network issues, authentication problems, or other git errors."
+            echo "Please check your remote repository access and try again."
+        elif ! output=$(git merge FETCH_HEAD 2>&1); then
+            echo "Warning: 'git merge FETCH_HEAD' failed."
+            echo "Error output:"
+            echo "$output"
+            echo "This may be due to merge conflicts or another error."
+            echo "Resolve any conflicts and try merging again."
+        fi
+    else
+        echo "Remote branch 'development' does not exist yet."
+        echo "It will be pushed for the first time in the next step."
     fi
 else
     echo "Creating development branch from main..."
