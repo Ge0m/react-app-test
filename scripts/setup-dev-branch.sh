@@ -14,10 +14,11 @@ if git show-ref --verify --quiet refs/heads/development; then
     echo "Development branch already exists locally."
     echo "Checking out development branch..."
     git checkout development
-    if ! git pull origin development 2>&1; then
+    if ! output=$(git pull origin development 2>&1); then
         echo "Warning: 'git pull origin development' failed."
+        echo "Error output:"
+        echo "$output"
         echo "This may be because the branch does not exist on the remote yet, or due to another error."
-        echo "You can check the error above for details."
         echo "If the branch does not exist remotely, it will be pushed for the first time in the next step."
     fi
 else
