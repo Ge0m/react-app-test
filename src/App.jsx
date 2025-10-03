@@ -444,7 +444,7 @@ const MatchBuilder = () => {
       }
       // Debug: log previous and new slot for visibility when importing
       try {
-        console.debug('replaceCharacter: matchId', matchId, 'teamName', teamName, 'index', index, 'prevSlot', team[index], 'newSlot', normalized);
+        console.log('replaceCharacter: matchId', matchId, 'teamName', teamName, 'index', index, 'prevSlot', team[index], 'newSlot', normalized);
       } catch (e) {}
 
       team[index] = normalized;
@@ -1329,14 +1329,15 @@ const CharacterSlot = ({
 
                       // Debug: show parsed YAML and constructed slot object before applying
                       try {
-                        console.debug('CharacterSlot import parsed data:', data);
-                        console.debug('CharacterSlot import constructed slot:', slot);
+                        console.log('CharacterSlot import parsed data:', data);
+                        console.log('CharacterSlot import constructed slot:', slot);
                       } catch (e) {}
 
                       if (typeof onReplaceCharacter === 'function') {
                         onReplaceCharacter(slot);
                       } else {
                         // Fallback: apply updates individually (legacy)
+                        console.error('CharacterSlot import: onReplaceCharacter not provided, falling back to per-field updates');
                         onUpdate('id', slot.id);
                         onUpdate('costume', slot.costume);
                         slot.capsules.forEach((cid, ci) => onUpdateCapsule(ci, cid));
