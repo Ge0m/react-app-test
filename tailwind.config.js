@@ -1,5 +1,7 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+import colors from 'tailwindcss/colors';
+
+export default {
   content: [
     './index.html',
     './src/**/*.{js,jsx,ts,tsx}',
@@ -21,7 +23,7 @@ module.exports = {
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
-      colors: require('tailwindcss/colors'),
+      colors,
     },
   },
   plugins: [],
