@@ -55,6 +55,11 @@ const MatchBuilder = () => {
 
   // Helper to import a single team YAML and map display names back to IDs, updating the match state
   const importSingleTeam = async (event, matchId, teamName) => {
+    // Clear the target team first so previous selections are removed
+    const clearTeam = (mId, tName) => {
+      setMatches(prev => prev.map(m => m.id === mId ? { ...m, [tName]: [] } : m));
+    };
+    clearTeam(matchId, teamName);
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -123,6 +128,8 @@ const MatchBuilder = () => {
 
   // Helper to import a single match
   const importSingleMatch = async (event, matchId) => {
+    // Clear both teams for this match before importing
+    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, team1: [], team2: [] } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -529,6 +536,8 @@ const MatchBuilder = () => {
   };
 
   const handleImportMatches = async (event) => {
+    // Clear all existing matches first
+    setMatches([]);
     const files = event.target.files;
     if (!files || files.length === 0) return;
     let matchSetup = null;
@@ -1226,6 +1235,12 @@ const CharacterSlot = ({
                   style={{ display: 'none' }}
                   onChange={async (e) => {
                     const files = e.target.files; if (!files || !files[0]) return; try {
+                      // clear current slot first
+                      onUpdate('id', '');
+                      onUpdate('costume', '');
+                      onUpdate('ai', '');
+                      // clear all capsules
+                      Array(7).fill('').forEach((_, i) => onUpdateCapsule(i, ''));
                       const text = await files[0].text();
                       const data = yaml.load(text);
                       if (!data) throw new Error('Invalid YAML');
