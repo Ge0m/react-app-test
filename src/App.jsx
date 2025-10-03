@@ -93,6 +93,7 @@ const MatchBuilder = () => {
         ));
         setSuccess(`Imported ${teamName} for match ${matchId}`);
         setError("");
+        try { event.target.value = null; } catch (e) {}
       } catch (e) {
         console.error("importSingleTeam error", e);
         setError("Invalid YAML file: " + file.name);
@@ -181,6 +182,7 @@ const MatchBuilder = () => {
         ));
         setSuccess(`Imported match details for match ${matchId}`);
         setError("");
+        try { event.target.value = null; } catch (e) {}
       } catch (e) {
         setError("Invalid YAML file: " + file.name);
         return;
@@ -620,6 +622,8 @@ const MatchBuilder = () => {
     setMatches(newMatches);
     setSuccess("Imported matches from JSON files.");
     setError("");
+    // reset the input so the same files can be uploaded again without refresh
+    try { event.target.value = null; } catch (e) { /* ignore */ }
   };
 
   console.log('Test BUILD');
@@ -1267,7 +1271,7 @@ const CharacterSlot = ({
                         caps.forEach((cid, ci) => onUpdateCapsule(ci, cid));
                       }
                     } catch (err) { console.error('import character build failed', err); }
-                    e.target.value = '';
+                    try { e.target.value = null; } catch (e) {}
                   }}
                 />
                 <button
