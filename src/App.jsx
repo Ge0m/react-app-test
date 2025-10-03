@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
 import yaml from "js-yaml";
 
@@ -866,6 +867,20 @@ const Combobox = ({
     ? items.filter((it) => getName(it).toLowerCase().includes(input.toLowerCase()))
     : items.slice(0, 50);
 
+  // Portal positioning so dropdown can escape parent overflow and stacking contexts
+  const [portalStyle, setPortalStyle] = useState(null);
+
+  const updatePortal = () => {
+    const el = inputRef.current;
+    if (!el) return setPortalStyle(null);
+    const rect = el.getBoundingClientRect();
+    setPortalStyle({
+      left: rect.left + window.scrollX,
+      top: rect.bottom + window.scrollY,
+      width: rect.width,
+    });
+  };
+
   const openList = () => {
     if (!disabled) setOpen(true);
   };
@@ -912,6 +927,22 @@ const Combobox = ({
     }
   };
 
+  // update portal position when open or when input changes
+  useEffect(() => {
+    if (!open) return;
+    updatePortal();
+    const onWin = () => updatePortal();
+    window.addEventListener('resize', onWin);
+    window.addEventListener('scroll', onWin, true);
+    const obs = new MutationObserver(onWin);
+    if (inputRef.current) obs.observe(document.body, { attributes: true, childList: true, subtree: true });
+    return () => {
+      window.removeEventListener('resize', onWin);
+      window.removeEventListener('scroll', onWin, true);
+      try { obs.disconnect(); } catch (e) {}
+    };
+  }, [open]);
+
   return (
     <div className="relative" onKeyDown={onKeyDown}>
       <input
@@ -929,18 +960,36 @@ const Combobox = ({
         aria-expanded={open}
       />
       {open && filtered.length > 0 && (
-        <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
-          {filtered.map((it, idx) => (
-            <li
-              key={it.id || idx}
-              onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-              onMouseEnter={() => setHighlight(idx)}
-              className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
-            >
-              {getName(it)}
-            </li>
-          ))}
-        </ul>
+        // render dropdown in a portal so it isn't clipped or hidden by parent stacking/overflow
+        (typeof document !== 'undefined' && portalStyle)
+          ? createPortal(
+            <ul className="absolute z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={{ left: portalStyle.left, top: portalStyle.top, width: portalStyle.width }}>
+              {filtered.map((it, idx) => (
+                <li
+                  key={it.id || idx}
+                  onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
+                >
+                  {getName(it)}
+                </li>
+              ))}
+            </ul>,
+            document.body
+          ) : (
+            <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
+              {filtered.map((it, idx) => (
+                <li
+                  key={it.id || idx}
+                  onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
+                >
+                  {getName(it)}
+                </li>
+              ))}
+            </ul>
+          )
       )}
     </div>
   );
@@ -1329,9 +1378,11 @@ const CharacterSlot = ({
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                   }}
-                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-purple-500 inline-block"
+                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-purple-500 inline-flex items-center"
+                  aria-label="Export character build"
                 >
-                  Export
+                  <Download size={14} />
+                  <span className="hidden sm:inline ml-2">Export</span>
                 </button>
 
                 <input
