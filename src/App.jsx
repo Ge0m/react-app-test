@@ -207,6 +207,15 @@ const MatchBuilder = () => {
   const [pendingMatchSetup, setPendingMatchSetup] = useState(null);
   const [pendingItemSetup, setPendingItemSetup] = useState(null);
 
+  // Auto-clear error messages after a short duration (7 seconds)
+  useEffect(() => {
+    if (!error) return;
+    const id = setTimeout(() => {
+      setError("");
+    }, 7000);
+    return () => clearTimeout(id);
+  }, [error]);
+
   const matchFileRef = useRef(null);
   const itemFileRef = useRef(null);
   const importJsonRef = useRef(null);
