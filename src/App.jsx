@@ -417,8 +417,33 @@ const MatchBuilder = () => {
     setMatches(prev => prev.map(match => {
       if (match.id !== matchId) return match;
       const team = [...match[teamName]];
-      if (index < 0 || index >= team.length) return match;
-      team[index] = slotObj;
+
+      // Normalize the incoming slot object to ensure predictable shape
+      const normalized = {
+        name: slotObj?.name || "",
+        id: slotObj?.id || "",
+        costume: slotObj?.costume || "",
+        ai: slotObj?.ai || "",
+        capsules: Array.isArray(slotObj?.capsules)
+          ? slotObj.capsules.map((c) => (c || ""))
+          : Array(7).fill("")
+      };
+
+      // Guarantee exactly 7 capsule slots
+      if (normalized.capsules.length < 7) {
+        normalized.capsules = [...normalized.capsules, ...Array(7 - normalized.capsules.length).fill("")];
+      } else if (normalized.capsules.length > 7) {
+        normalized.capsules = normalized.capsules.slice(0, 7);
+      }
+
+      if (index < 0) return match;
+
+      // If the team array is shorter than the target index, extend with empty slots
+      while (index >= team.length) {
+        team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" });
+      }
+
+      team[index] = normalized;
       return { ...match, [teamName]: team };
     }));
   };
