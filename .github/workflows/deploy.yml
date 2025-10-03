@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - Development
+      - Ge0m-patch-1
   workflow_dispatch:
 
 permissions:
