@@ -214,8 +214,8 @@ const MatchBuilder = () => {
       setErrorFading(false);
       return;
     }
-    // display duration before starting fade (ms)
-    const DISPLAY_MS = 7000;
+  // display duration before starting fade (ms)
+  const DISPLAY_MS = 5000;
     // fade duration should match the CSS transition (ms)
     const FADE_MS = 700;
 
@@ -238,8 +238,8 @@ const MatchBuilder = () => {
       setSuccessFading(false);
       return;
     }
-    const DISPLAY_MS = 7000;
-    const FADE_MS = 700;
+  const DISPLAY_MS = 5000;
+  const FADE_MS = 700;
 
     setSuccessFading(false);
     const toFade = setTimeout(() => {
@@ -487,9 +487,7 @@ const MatchBuilder = () => {
         team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" });
       }
       // Debug: log previous and new slot for visibility when importing
-      try {
-        console.log('replaceCharacter: matchId', matchId, 'teamName', teamName, 'index', index, 'prevSlot', team[index], 'newSlot', normalized);
-      } catch (e) {}
+      // replaceCharacter performed (debug logs removed)
 
       team[index] = normalized;
       return { ...match, [teamName]: team };
@@ -715,7 +713,6 @@ const MatchBuilder = () => {
     try { event.target.value = null; } catch (e) { /* ignore */ }
   };
 
-  console.log('Test BUILD');
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-600 to-slate-700 p-4 flex items-center justify-center">
@@ -1373,10 +1370,7 @@ const CharacterSlot = ({
                       }
 
                       // Debug: show parsed YAML and constructed slot object before applying
-                      try {
-                        console.log('CharacterSlot import parsed data:', data);
-                        console.log('CharacterSlot import constructed slot:', slot);
-                      } catch (e) {}
+                      // parsed YAML and constructed slot (debug logs removed)
 
                       if (typeof onReplaceCharacter === 'function') {
                         onReplaceCharacter(slot);
