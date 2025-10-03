@@ -1327,6 +1327,12 @@ const CharacterSlot = ({
                         });
                       }
 
+                      // Debug: show parsed YAML and constructed slot object before applying
+                      try {
+                        console.debug('CharacterSlot import parsed data:', data);
+                        console.debug('CharacterSlot import constructed slot:', slot);
+                      } catch (e) {}
+
                       if (typeof onReplaceCharacter === 'function') {
                         onReplaceCharacter(slot);
                       } else {
