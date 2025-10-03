@@ -94,7 +94,10 @@ const MatchBuilder = () => {
         try { event.target.value = null; } catch (e) {}
       } catch (e) {
         console.error("importSingleTeam error", e);
-        setError("Invalid YAML file: " + file.name);
+        const fname = (typeof file !== 'undefined' && file && file.name) ? file.name : 'file';
+        setError("Invalid YAML file: " + fname);
+        try { event.target.value = null; } catch (er) {}
+        try { document.querySelectorAll('input[type=file]').forEach(i=>i.value=null); } catch(err) {}
         return;
       }
     }
@@ -183,7 +186,10 @@ const MatchBuilder = () => {
         setError("");
         try { event.target.value = null; } catch (e) {}
       } catch (e) {
-        setError("Invalid YAML file: " + file.name);
+        const fname = (typeof file !== 'undefined' && file && file.name) ? file.name : 'file';
+        setError("Invalid YAML file: " + fname);
+        try { event.target.value = null; } catch (er) {}
+        try { document.querySelectorAll('input[type=file]').forEach(i=>i.value=null); } catch(err) {}
         return;
       }
     }
