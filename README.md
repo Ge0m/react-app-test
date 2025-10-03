@@ -2,9 +2,17 @@
 
 Dragon Ball Sparking! Zero League Match Builder - A web application for creating and managing tournament matches.
 
+## Quick Links
+
+- 📖 [Setup Development Branch](docs/SETUP_DEV_BRANCH.md) - First-time setup for the development workflow
+- 🤝 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute to the project
+- 🚀 [GitHub Pages Deployment](https://ge0m.github.io/react-app-test/) - Live production site
+
 ## Branching Strategy
 
 This repository uses a simple branching strategy to ensure code quality and stability:
+
+> **📋 First-time setup?** See [docs/SETUP_DEV_BRANCH.md](docs/SETUP_DEV_BRANCH.md) for detailed instructions on creating the development branch.
 
 ### Branches
 
