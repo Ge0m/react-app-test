@@ -1,10 +1,10 @@
 name: Deploy to GitHub Pages
-
+##This workflow deploys the app to GitHub Pages whenever there is a push to the main or dev-branch branches.
 on:
   push:
     branches:
       - main
-      - Ge0m-patch-1
+      - dev-branch
   workflow_dispatch:
 
 permissions:

@@ -55,6 +55,9 @@ const MatchBuilder = () => {
 
   // Helper to import a single team YAML and map display names back to IDs, updating the match state
   const importSingleTeam = async (event, matchId, teamName) => {
+    // Clear the target team first so previous selections are removed — use 5 empty slots
+    const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
+    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, [teamName]: emptySlots() } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -88,9 +91,13 @@ const MatchBuilder = () => {
         ));
         setSuccess(`Imported ${teamName} for match ${matchId}`);
         setError("");
+        try { event.target.value = null; } catch (e) {}
       } catch (e) {
         console.error("importSingleTeam error", e);
-        setError("Invalid YAML file: " + file.name);
+        const fname = (typeof file !== 'undefined' && file && file.name) ? file.name : 'file';
+        setError("Invalid YAML file: " + fname);
+        try { event.target.value = null; } catch (er) {}
+        try { document.querySelectorAll('input[type=file]').forEach(i=>i.value=null); } catch(err) {}
         return;
       }
     }
@@ -123,6 +130,9 @@ const MatchBuilder = () => {
 
   // Helper to import a single match
   const importSingleMatch = async (event, matchId) => {
+    // Clear both teams for this match before importing (5 empty slots each)
+    const emptySlots = () => Array.from({ length: 5 }, () => ({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" }));
+    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, team1: emptySlots(), team2: emptySlots() } : m));
     const files = event.target.files;
     if (!files || files.length === 0) return;
     for (let file of files) {
@@ -174,8 +184,12 @@ const MatchBuilder = () => {
         ));
         setSuccess(`Imported match details for match ${matchId}`);
         setError("");
+        try { event.target.value = null; } catch (e) {}
       } catch (e) {
-        setError("Invalid YAML file: " + file.name);
+        const fname = (typeof file !== 'undefined' && file && file.name) ? file.name : 'file';
+        setError("Invalid YAML file: " + fname);
+        try { event.target.value = null; } catch (er) {}
+        try { document.querySelectorAll('input[type=file]').forEach(i=>i.value=null); } catch(err) {}
         return;
       }
     }
@@ -192,6 +206,50 @@ const MatchBuilder = () => {
   const [success, setSuccess] = useState("");
   const [pendingMatchSetup, setPendingMatchSetup] = useState(null);
   const [pendingItemSetup, setPendingItemSetup] = useState(null);
+
+  // Show error for a duration, then fade it out before clearing
+  const [errorFading, setErrorFading] = useState(false);
+  useEffect(() => {
+    if (!error) {
+      setErrorFading(false);
+      return;
+    }
+  // display duration before starting fade (ms)
+  const DISPLAY_MS = 5000;
+    // fade duration should match the CSS transition (ms)
+    const FADE_MS = 700;
+
+    setErrorFading(false);
+    const toFade = setTimeout(() => {
+      setErrorFading(true);
+      // after fade completes, clear the error
+      const toClear = setTimeout(() => setError(""), FADE_MS);
+      // cleanup inner timeout if error changes
+      return () => clearTimeout(toClear);
+    }, DISPLAY_MS);
+
+    return () => clearTimeout(toFade);
+  }, [error]);
+
+  // Show success for a duration, then fade it out before clearing
+  const [successFading, setSuccessFading] = useState(false);
+  useEffect(() => {
+    if (!success) {
+      setSuccessFading(false);
+      return;
+    }
+  const DISPLAY_MS = 5000;
+  const FADE_MS = 700;
+
+    setSuccessFading(false);
+    const toFade = setTimeout(() => {
+      setSuccessFading(true);
+      const toClear = setTimeout(() => setSuccess(""), FADE_MS);
+      return () => clearTimeout(toClear);
+    }, DISPLAY_MS);
+
+    return () => clearTimeout(toFade);
+  }, [success]);
 
   const matchFileRef = useRef(null);
   const itemFileRef = useRef(null);
@@ -398,6 +456,44 @@ const MatchBuilder = () => {
     );
   };
 
+  // Replace entire character slot atomically to avoid merge/race conditions
+  const replaceCharacter = (matchId, teamName, index, slotObj) => {
+    setMatches(prev => prev.map(match => {
+      if (match.id !== matchId) return match;
+      const team = [...match[teamName]];
+
+      // Normalize the incoming slot object to ensure predictable shape
+      const normalized = {
+        name: slotObj?.name || "",
+        id: slotObj?.id || "",
+        costume: slotObj?.costume || "",
+        ai: slotObj?.ai || "",
+        capsules: Array.isArray(slotObj?.capsules)
+          ? slotObj.capsules.map((c) => (c || ""))
+          : Array(7).fill("")
+      };
+
+      // Guarantee exactly 7 capsule slots
+      if (normalized.capsules.length < 7) {
+        normalized.capsules = [...normalized.capsules, ...Array(7 - normalized.capsules.length).fill("")];
+      } else if (normalized.capsules.length > 7) {
+        normalized.capsules = normalized.capsules.slice(0, 7);
+      }
+
+      if (index < 0) return match;
+
+      // If the team array is shorter than the target index, extend with empty slots
+      while (index >= team.length) {
+        team.push({ name: "", id: "", capsules: Array(7).fill(""), costume: "", ai: "" });
+      }
+      // Debug: log previous and new slot for visibility when importing
+      // replaceCharacter performed (debug logs removed)
+
+      team[index] = normalized;
+      return { ...match, [teamName]: team };
+    }));
+  };
+
   const updateCapsule = (matchId, teamName, charIndex, capsuleIndex, value) => {
     setMatches(
       matches.map((match) => {
@@ -529,6 +625,8 @@ const MatchBuilder = () => {
   };
 
   const handleImportMatches = async (event) => {
+    // Clear all existing matches first
+    setMatches([]);
     const files = event.target.files;
     if (!files || files.length === 0) return;
     let matchSetup = null;
@@ -611,9 +709,10 @@ const MatchBuilder = () => {
     setMatches(newMatches);
     setSuccess("Imported matches from JSON files.");
     setError("");
+    // reset the input so the same files can be uploaded again without refresh
+    try { event.target.value = null; } catch (e) { /* ignore */ }
   };
 
-  console.log('Test BUILD');
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-700 via-slate-600 to-slate-700 p-4 flex items-center justify-center">
@@ -641,13 +740,13 @@ const MatchBuilder = () => {
         </div>
 
         {error && (
-          <div className="bg-red-600 border-2 border-red-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+          <div className={`bg-red-600 border-2 border-red-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg transition-opacity duration-700 ${errorFading ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             ⚠️ {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-600 border-2 border-green-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg">
+          <div className={`bg-green-600 border-2 border-green-700 text-white px-4 py-3 rounded-xl mb-4 font-semibold shadow-lg transition-opacity duration-700 ${successFading ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             ✓ {success}
           </div>
         )}
@@ -711,6 +810,7 @@ const MatchBuilder = () => {
               onUpdateCharacter={(teamName, index, field, value) =>
                 updateCharacter(match.id, teamName, index, field, value)
               }
+              onReplaceCharacter={(teamName, index, slotObj) => replaceCharacter(match.id, teamName, index, slotObj)}
               onUpdateCapsule={(teamName, charIndex, capsuleIndex, value) =>
                 updateCapsule(
                   match.id,
@@ -757,7 +857,8 @@ const Combobox = ({
 
   useEffect(() => {
     const found = items.find((it) => it.id === valueId);
-    setInput(found ? getName(found) : input === "" ? "" : input);
+    // If we have a matching item, show its name; otherwise clear the input so stale names don't persist
+    setInput(found ? getName(found) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valueId, items]);
 
@@ -857,6 +958,7 @@ const MatchCard = ({
   onRemoveCharacter,
   onUpdateCharacter,
   onUpdateCapsule,
+  onReplaceCharacter,
   collapsed,
   onToggleCollapse,
   exportSingleMatch,
@@ -946,6 +1048,7 @@ const MatchCard = ({
             exportSingleTeam={exportSingleTeam}
             importSingleTeam={importSingleTeam}
             onRenameTeam={onRenameTeam1}
+            onReplaceCharacter={(index, slotObj) => onReplaceCharacter('team1', index, slotObj)}
           />
           <TeamPanel
             teamName="team2"
@@ -969,6 +1072,7 @@ const MatchCard = ({
             exportSingleTeam={exportSingleTeam}
             importSingleTeam={importSingleTeam}
             onRenameTeam={onRenameTeam2}
+            onReplaceCharacter={(index, slotObj) => onReplaceCharacter('team2', index, slotObj)}
           />
         </div>
       )}
@@ -994,6 +1098,7 @@ const TeamPanel = ({
   importSingleTeam,
   onRenameTeam,
   teamName,
+  onReplaceCharacter,
 }) => {
   if (typeof exportSingleTeam !== "function") {
     console.warn("TeamPanel: exportSingleTeam prop is not a function!", exportSingleTeam);
@@ -1079,6 +1184,7 @@ const TeamPanel = ({
                 onUpdateCapsule={(capsuleIndex, value) =>
                   onUpdateCapsule(index, capsuleIndex, value)
                 }
+                onReplaceCharacter={(slotObj) => onReplaceCharacter(index, slotObj)}
               />
             ))}
           </div>
@@ -1108,6 +1214,7 @@ const CharacterSlot = ({
   onRemove,
   onUpdate,
   onUpdateCapsule,
+  onReplaceCharacter,
 }) => {
   const [collapsed, setCollapsed] = React.useState(false);
   const charCostumes = costumes.filter(
@@ -1229,30 +1336,54 @@ const CharacterSlot = ({
                       const text = await files[0].text();
                       const data = yaml.load(text);
                       if (!data) throw new Error('Invalid YAML');
-                      // map names back to ids
+
+                      // Build a full slot object (ids) and replace atomically
+                      const slot = {
+                        name: '',
+                        id: '',
+                        costume: '',
+                        capsules: Array(7).fill(''),
+                        ai: '',
+                      };
+
                       if (data.character) {
-                        const charObj = characters.find(c => c.name === data.character) || { id: '' };
-                        onUpdate('id', charObj.id || '');
+                        const charObj = characters.find(c => (c.name || '').toString().trim().toLowerCase() === data.character.toString().trim().toLowerCase());
+                        slot.name = data.character.toString();
+                        slot.id = charObj ? charObj.id : '';
                       }
+
                       if (data.costume) {
-                        const costumeObj = costumes.find(c => c.name === data.costume) || { id: '' };
-                        onUpdate('costume', costumeObj.id || '');
+                        const costumeObj = costumes.find(c => (c.name || '').toString().trim().toLowerCase() === data.costume.toString().trim().toLowerCase());
+                        slot.costume = costumeObj ? costumeObj.id : '';
                       }
+
                       if (data.ai) {
-                        const aiId = findAiIdFromValue(data.ai, aiItems);
-                        onUpdate('ai', aiId);
+                        slot.ai = findAiIdFromValue(data.ai, aiItems);
                       }
-                      // map capsules names -> ids
+
                       if (Array.isArray(data.capsules)) {
-                        const caps = Array(7).fill('').map((_, i) => {
+                        slot.capsules = Array(7).fill('').map((_, i) => {
                           if (!data.capsules[i]) return '';
-                          const found = capsules.find(cap => cap.name === data.capsules[i]);
+                          const found = capsules.find(cap => (cap.name || '').toString().trim().toLowerCase() === data.capsules[i].toString().trim().toLowerCase());
                           return found ? found.id : '';
                         });
-                        caps.forEach((cid, ci) => onUpdateCapsule(ci, cid));
+                      }
+
+                      // Debug: show parsed YAML and constructed slot object before applying
+                      // parsed YAML and constructed slot (debug logs removed)
+
+                      if (typeof onReplaceCharacter === 'function') {
+                        onReplaceCharacter(slot);
+                      } else {
+                        // Fallback: apply updates individually (legacy)
+                        console.error('CharacterSlot import: onReplaceCharacter not provided, falling back to per-field updates');
+                        onUpdate('id', slot.id);
+                        onUpdate('costume', slot.costume);
+                        slot.capsules.forEach((cid, ci) => onUpdateCapsule(ci, cid));
+                        onUpdate('ai', slot.ai);
                       }
                     } catch (err) { console.error('import character build failed', err); }
-                    e.target.value = '';
+                    try { e.target.value = null; } catch (e) {}
                   }}
                 />
                 <button
