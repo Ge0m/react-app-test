@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from 'react-dom';
+import { useFloating, offset, flip, shift, size, autoUpdate } from '@floating-ui/react-dom';
 import { Plus, Trash2, Copy, Download, Upload, X, Sparkles, Minus } from "lucide-react";
 import yaml from "js-yaml";
 
@@ -758,7 +760,7 @@ const MatchBuilder = () => {
           >
             <span className="flex items-center">
               <Plus className="mr-2" size={18} />
-              ADD MATCH
+              <span className="hidden sm:inline">ADD MATCH</span>
             </span>
           </button>
           <button
@@ -767,7 +769,7 @@ const MatchBuilder = () => {
           >
             <span className="flex items-center">
               <Download className="mr-2" size={18} />
-              EXPORT ALL
+              <span className="hidden sm:inline">EXPORT ALL</span>
             </span>
           </button>
           <button
@@ -776,12 +778,12 @@ const MatchBuilder = () => {
           >
             <span className="flex items-center">
               <Trash2 className="mr-2" size={18} />
-              CLEAR ALL
+              <span className="hidden sm:inline">CLEAR ALL</span>
             </span>
           </button>
           <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center">
             <Upload className="mr-2" size={18} />
-            IMPORT MATCHES
+            <span className="hidden sm:inline">IMPORT MATCHES</span>
             <input
               type="file"
               accept="application/json"
@@ -866,6 +868,27 @@ const Combobox = ({
     ? items.filter((it) => getName(it).toLowerCase().includes(input.toLowerCase()))
     : items.slice(0, 50);
 
+  // Floating UI: robust positioning, flipping, and auto-updates
+  const { x, y, strategy, refs, update, floatingStyles } = useFloating({
+    placement: 'bottom-start',
+    middleware: [
+      offset(6),
+      flip(),
+      shift(),
+      size({
+        apply({ rects, availableHeight, elements }) {
+          Object.assign(elements.floating.style, {
+            width: `${rects.reference.width}px`,
+            maxHeight: `${Math.min(availableHeight, 400)}px`,
+            overflow: 'auto',
+          });
+        },
+      }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+
+
   const openList = () => {
     if (!disabled) setOpen(true);
   };
@@ -912,10 +935,19 @@ const Combobox = ({
     }
   };
 
+  // keep floating position updated when open
+  useEffect(() => {
+    if (!open) return;
+    // ensure reference is registered
+    try { refs.setReference?.(inputRef.current); } catch (e) {}
+    // update() will be called automatically by autoUpdate, but call once to be sure
+    if (typeof update === 'function') update();
+  }, [open, refs, update]);
+
   return (
     <div className="relative" onKeyDown={onKeyDown}>
       <input
-        ref={inputRef}
+        ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
         type="text"
         value={input}
         onChange={(e) => { setInput(e.target.value); openList(); }}
@@ -929,18 +961,35 @@ const Combobox = ({
         aria-expanded={open}
       />
       {open && filtered.length > 0 && (
-        <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
-          {filtered.map((it, idx) => (
-            <li
-              key={it.id || idx}
-              onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-              onMouseEnter={() => setHighlight(idx)}
-              className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
-            >
-              {getName(it)}
-            </li>
-          ))}
-        </ul>
+        (typeof document !== 'undefined')
+          ? createPortal(
+            <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
+              {filtered.map((it, idx) => (
+                <li
+                  key={it.id || idx}
+                  onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
+                >
+                  {getName(it)}
+                </li>
+              ))}
+            </ul>,
+            document.body
+          ) : (
+            <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
+              {filtered.map((it, idx) => (
+                <li
+                  key={it.id || idx}
+                  onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
+                >
+                  {getName(it)}
+                </li>
+              ))}
+            </ul>
+          )
       )}
     </div>
   );
@@ -972,7 +1021,7 @@ const MatchCard = ({
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 shadow-xl border-2 border-orange-400/50 relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 via-orange-500 to-orange-400"></div>
-      <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-600">
+  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 pb-3 border-b border-slate-600">
         <div className="flex items-center gap-2">
           <button
             onClick={onToggleCollapse}
@@ -990,18 +1039,20 @@ const MatchCard = ({
             style={{ caretColor: '#fb923c' }}
           />
         </div>
-        <div className="flex gap-2">
+  <div className="flex flex-wrap gap-2 mt-3 md:mt-0">
           <button
             onClick={() => exportSingleMatch(match)}
             className="bg-gradient-to-r from-purple-600 to-purple-700 text-white px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-all border border-purple-500 flex items-center justify-center"
             aria-label="Download Match"
           >
             <Download size={18} />
+            <span className="sr-only">Download Match</span>
           </button>
           <label className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-3 py-2 rounded-lg shadow-md hover:scale-105 transition-all border border-blue-500 cursor-pointer flex items-center justify-center"
             aria-label="Upload Match"
           >
             <Upload size={18} />
+            <span className="sr-only">Upload Match</span>
               <input
                 type="file"
                 accept=".yaml,application/x-yaml,text/yaml"
@@ -1012,20 +1063,24 @@ const MatchCard = ({
           </label>
           <button
             onClick={onDuplicate}
-            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500"
+            className="bg-gradient-to-r from-green-600 to-green-700 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-green-500 flex items-center justify-center"
+            aria-label="Duplicate Match"
           >
             <Copy size={16} />
+            <span className="hidden sm:inline ml-2">DUP</span>
           </button>
           <button
             onClick={onRemove}
-            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500"
+            className="bg-gradient-to-r from-red-600 to-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm shadow-md hover:scale-105 transition-all border border-red-500 flex items-center justify-center"
+            aria-label="Remove Match"
           >
             <Trash2 size={16} />
+            <span className="hidden sm:inline ml-2">REMOVE</span>
           </button>
         </div>
       </div>
       {!collapsed && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TeamPanel
             teamName="team1"
             displayName={match.team1Name}
@@ -1142,10 +1197,12 @@ const TeamPanel = ({
             style={{ width: 28, height: 28 }}
           >
             <Download size={16} />
+            <span className="sr-only">Download {displayName}</span>
           </button>
           <label className="p-1 rounded bg-blue-700 text-white border border-blue-400 hover:bg-blue-400 hover:text-slate-800 transition-all flex items-center justify-center z-20 cursor-pointer" aria-label={`Upload ${displayName}`}
             style={{ width: 28, height: 28 }}>
             <Upload size={16} />
+            <span className="sr-only">Upload {displayName}</span>
             <input
               type="file"
               accept=".yaml,application/x-yaml,text/yaml"
@@ -1321,9 +1378,11 @@ const CharacterSlot = ({
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                   }}
-                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-purple-500 inline-block"
+                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-purple-500 inline-flex items-center"
+                  aria-label="Export character build"
                 >
-                  Export
+                  <Download size={14} />
+                  <span className="hidden sm:inline ml-2">Export</span>
                 </button>
 
                 <input
@@ -1386,21 +1445,25 @@ const CharacterSlot = ({
                     try { e.target.value = null; } catch (e) {}
                   }}
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-blue-400 inline-block"
-                >
-                  Import
-                </button>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-blue-400 inline-flex items-center"
+                        aria-label="Import character build"
+                      >
+                        <Upload size={14} />
+                        <span className="hidden sm:inline ml-2">Import</span>
+                      </button>
             </div>
 
             <div>
-              <button
-                onClick={onRemove}
-                className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-block"
-              >
-                Remove
-              </button>
+                <button
+                  onClick={onRemove}
+                  className="mt-4 px-3 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-sm shadow hover:scale-105 transition-all border border-red-400 inline-flex items-center"
+                  aria-label="Remove character"
+                >
+                  <Trash2 size={14} />
+                  <span className="hidden sm:inline ml-2">Remove</span>
+                </button>
             </div>
           </div>
         </div>
