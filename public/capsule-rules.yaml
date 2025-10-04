@@ -10,7 +10,7 @@ rulesets:
       createdAt: "2025-10-04"
     totalCost: 12
     scope: per-character
-    mode: hard
+    mode: soft
     restrictions:
       - type: unique-per-character
         params:

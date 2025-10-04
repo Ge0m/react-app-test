@@ -18,6 +18,30 @@ const findAiIdFromValue = (val, aiItems) => {
   return byName ? byName.id : "";
 };
 
+// Hoisted RulesetSelector so it's available before it's referenced in JSX
+function RulesetSelector({ rulesets, activeKey, onChange }) {
+  const items = Object.keys((rulesets && rulesets.rulesets) || {}).map((k) => ({
+    id: k,
+    name: (rulesets.rulesets[k] && rulesets.rulesets[k].metadata && rulesets.rulesets[k].metadata.name) || k,
+  }));
+  return (
+    <div>
+      <select
+        className="bg-slate-800 text-white px-2 py-1 rounded-lg"
+        value={activeKey || ""}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">None</option>
+        {items.map((it) => (
+          <option key={it.id} value={it.id}>
+            {it.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 const MatchBuilder = () => {
   // Helper to download a file
   const downloadFile = (filename, content, type = "text/yaml") => {
@@ -120,7 +144,12 @@ const MatchBuilder = () => {
       team2: (match.team2 || []).map((char) => ({
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-        capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        capsules: (char.capsules || []).filter(Boolean).map(cid => {
+          const cap = capsules.find(c => c.id === cid);
+          const name = cap ? cap.name : cid;
+          const cost = cap ? Number(cap.cost || cap.Cost || 0) : 0;
+          return `${name}${cost ? ` (${cost})` : ''}`;
+        }),
         ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
       }))
     };
@@ -910,19 +939,18 @@ const MatchBuilder = () => {
             />
           </label>
         </div>
-        <div className="flex justify-center mb-4">
-          <div className="text-sm text-slate-200 bg-slate-800 border border-slate-600 px-3 py-2 rounded-lg">
-            <label className="mr-2">Ruleset:</label>
+        <div className="flex justify-center mb-4 items-center gap-3">
+          <div className="text-sm text-slate-300">Ruleset:</div>
+          <div className="text-sm bg-slate-800 border border-slate-600 px-2 py-1 rounded-lg">
+            {/* Use the shared Combobox for consistent styling */}
             {(typeof rulesets !== 'undefined' && rulesets && rulesets.rulesets) ? (
-              <select value={activeRulesetKey || ''} onChange={(e) => setActiveRulesetKey(e.target.value)} className="bg-transparent outline-none">
-                {Object.keys(rulesets.rulesets).map(k => (
-                  <option key={k} value={k}>{rulesets.rulesets[k].metadata?.name || k}</option>
-                ))}
-              </select>
+              <RulesetSelector
+                rulesets={rulesets}
+                activeKey={activeRulesetKey}
+                onChange={(k) => setActiveRulesetKey(k)}
+              />
             ) : (
-              <select value="" disabled className="bg-transparent outline-none">
-                <option>No capsule rules loaded</option>
-              </select>
+              <div className="text-slate-400 px-2 py-1">No capsule rules loaded</div>
             )}
           </div>
         </div>
@@ -982,11 +1010,16 @@ const Combobox = ({
   onSelect, // (id, name)
   getName = (it) => it.name,
   disabled = false,
+  renderItemRight = null,
+  renderValueRight = null,
 }) => {
   const [input, setInput] = useState(() => {
     const found = items.find((it) => it.id === valueId);
     return found ? getName(found) : "";
   });
+
+  // Small selector component that wraps Combobox for rulesets
+  // (ruleset selector moved to top-level RulesetSelector for proper hoisting)
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const listRef = useRef(null);
@@ -1002,6 +1035,44 @@ const Combobox = ({
   const filtered = input
     ? items.filter((it) => getName(it).toLowerCase().includes(input.toLowerCase()))
     : items.slice(0, 50);
+
+  const selectedItem = items.find((it) => it.id === valueId);
+  // Tooltip state for showing item effects on hover/focus
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [tooltipContent, setTooltipContent] = useState("");
+  const tooltipTimer = useRef(null);
+  const { x: tx, y: ty, strategy: tStrategy, refs: tRefs, floatingStyles: tFloatingStyles, update: tUpdate } = useFloating({
+    placement: 'top',
+    middleware: [offset(8), flip()],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const showTooltipFor = (el, content) => {
+    if (!el) return;
+    if (tooltipTimer.current) {
+      clearTimeout(tooltipTimer.current);
+      tooltipTimer.current = null;
+    }
+    setTooltipContent(content || "");
+    try { tRefs.setReference(el); } catch (e) {}
+    setTooltipOpen(true);
+    try { if (typeof tUpdate === 'function') tUpdate(); } catch(e){}
+  };
+
+  const hideTooltipSoon = (delay = 120) => {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    tooltipTimer.current = setTimeout(() => {
+      setTooltipOpen(false);
+      setTooltipContent("");
+      tooltipTimer.current = null;
+    }, delay);
+  };
+
+  const hideTooltipNow = () => {
+    if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null; }
+    setTooltipOpen(false);
+    setTooltipContent("");
+  };
 
   // Floating UI: robust positioning, flipping, and auto-updates
   const { x, y, strategy, refs, update, floatingStyles } = useFloating({
@@ -1081,20 +1152,29 @@ const Combobox = ({
 
   return (
     <div className="relative" onKeyDown={onKeyDown}>
-      <input
-        ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
-        type="text"
-        value={input}
-        onChange={(e) => { setInput(e.target.value); openList(); }}
-        onFocus={openList}
-        onBlur={() => { setTimeout(closeList, 150); }}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={`w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all ${disabled ? 'opacity-60' : ''}`}
-        style={{ caretColor: '#fb923c' }}
-        aria-autocomplete="list"
-        aria-expanded={open}
-      />
+      <div className="relative">
+        <input
+          ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
+          type="text"
+          value={input}
+          onChange={(e) => { setInput(e.target.value); openList(); }}
+          onFocus={(e) => { openList(); if (selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
+          onBlur={(e) => { setTimeout(() => { closeList(); hideTooltipNow(); }, 150); }}
+          onMouseEnter={(e) => { if (selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
+          onMouseLeave={() => hideTooltipSoon()}
+          placeholder={placeholder}
+          disabled={disabled}
+          aria-label={placeholder}
+          className={`w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all ${disabled ? 'opacity-60' : ''}`}
+          style={{ caretColor: '#fb923c' }}
+          aria-autocomplete="list"
+          aria-expanded={open}
+        />
+        {renderValueRight && selectedItem ? (
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+            {renderValueRight(selectedItem)}
+          </div>
+        ) : null}
       {open && filtered.length > 0 && (
         (typeof document !== 'undefined')
           ? createPortal(
@@ -1103,10 +1183,16 @@ const Combobox = ({
                 <li
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={() => setHighlight(idx)}
+                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { hideTooltipSoon(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
-                  {getName(it)}
+                  <div className="flex items-center justify-between">
+                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || '')} onBlur={() => hideTooltipSoon()}>{getName(it)}</span>
+                    {renderItemRight ? renderItemRight(it) : ((typeof it === 'object' && (it.cost || it.Cost)) ? (
+                      <span className="ml-2 text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{Number(it.cost || it.Cost || 0)}</span>
+                    ) : null)}
+                  </div>
                 </li>
               ))}
             </ul>,
@@ -1117,15 +1203,29 @@ const Combobox = ({
                 <li
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={() => setHighlight(idx)}
+                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { hideTooltipSoon(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
-                  {getName(it)}
+                  <div className="flex items-center justify-between">
+                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || '')} onBlur={() => hideTooltipSoon()}>{getName(it)}</span>
+                    {renderItemRight ? renderItemRight(it) : ((typeof it === 'object' && (it.cost || it.Cost)) ? (
+                      <span className="ml-2 text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{Number(it.cost || it.Cost || 0)}</span>
+                    ) : null)}
+                  </div>
                 </li>
               ))}
             </ul>
           )
       )}
+
+      {/* Tooltip portal */}
+      {tooltipOpen && (typeof document !== 'undefined') ? createPortal(
+        <div ref={(el) => { try { tRefs.setFloating?.(el); } catch(e){} }} style={tFloatingStyles} className="z-[10000] pointer-events-none max-w-xs text-sm text-slate-100 bg-slate-900 p-2 rounded shadow-lg">
+          {tooltipContent}
+        </div>,
+        document.body
+      ) : null}
     </div>
   );
 };
@@ -1438,7 +1538,9 @@ const CharacterSlot = ({
     if (ruleset.mode === 'soft') {
       if (ruleset.scope === 'per-character' && ruleset.totalCost) {
         const sum = used.reduce((s, id) => s + (costMap[id] || 0), 0);
-        if (sum > (ruleset.totalCost || 0)) violations.push({ type: 'cost', message: `Character exceeds cost limit (${sum} > ${ruleset.totalCost})` });
+        if (sum > (ruleset.totalCost || 0)) {
+          violations.push({ type: 'cost', message: `Character exceeds cost limit (${sum} > ${ruleset.totalCost})`, over: sum - (ruleset.totalCost || 0) });
+        }
       }
       const uniqueTeam = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-team' && r.params?.enabled);
       if (uniqueTeam) {
@@ -1498,8 +1600,8 @@ const CharacterSlot = ({
       {!collapsed && (
         <div className="space-y-2 mt-3">
           {violations.length > 0 && (
-            <div className="bg-yellow-600 text-slate-900 px-3 py-2 rounded mb-2 font-semibold">
-              ⚠️ {violations.map(v => v.message).join(' · ')}
+            <div className={`px-3 py-2 rounded mb-2 font-semibold ${violations.some(v=>v.type==='cost') ? 'bg-red-800 text-white' : 'bg-yellow-600 text-slate-900'}`}>
+                ⚠️ {violations.map(v => v.type === 'cost' ? `Points over limit: ${v.over}` : v.message).join(' · ')}
             </div>
           )}
           <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide flex items-center justify-between">
@@ -1513,8 +1615,10 @@ const CharacterSlot = ({
                   const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.Cost || c.cost || 0)]));
                   const used = (character.capsules||[]).filter(Boolean);
                   const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
-                  const remaining = Math.max(0, (ruleset.totalCost || 0) - sumUsed);
-                  return `Budget: ${remaining} / ${ruleset.totalCost}`;
+                  const total = ruleset.totalCost || 0;
+                  const over = sumUsed - total;
+                  const cls = over > 0 ? 'text-red-400 font-bold' : 'text-slate-300';
+                  return <span className={cls}>{`Points: ${sumUsed} / ${total}`}</span>;
                 } catch (e) { return ''; }
               })()}
             </span>
@@ -1551,7 +1655,7 @@ const CharacterSlot = ({
                 available = available.filter(c => c && (c.id === capsuleId || (sumUsedOther + (costMap[c.id] || 0)) <= (ruleset.totalCost || 0)));
               }
 
-              return (
+                return (
                 <div key={i} className="mb-1">
                   <Combobox
                     valueId={capsuleId}
@@ -1559,6 +1663,43 @@ const CharacterSlot = ({
                     getName={(c) => c.name}
                     placeholder={`Capsule ${i + 1}`}
                     onSelect={(id) => onUpdateCapsule(i, id)}
+                    renderItemRight={(it) => {
+                      const cost = Number(it.cost || it.Cost || 0);
+                      // compute per-character overage
+                      const used = (character.capsules||[]).filter(Boolean);
+                      const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                      const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
+                      const over = sumUsed - total;
+                      const EXPENSIVE_THRESHOLD = 5; // adjust as desired
+                      // determine base color by cost
+                      let baseClass = 'bg-amber-200 text-slate-800';
+                      if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                      else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
+                      else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                      // determine if we should show red: either cost meets expensive threshold OR character is over budget
+                      const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
+                      const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
+                      const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
+                      return (
+                        <span className={`ml-2 text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>
+                      );
+                    }}
+                    renderValueRight={(it) => {
+                      const cost = Number(it.cost || it.Cost || 0);
+                      const used = (character.capsules||[]).filter(Boolean);
+                      const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                      const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
+                      const over = sumUsed - total;
+                      const EXPENSIVE_THRESHOLD = 5;
+                      let baseClass = 'bg-amber-200 text-slate-800';
+                      if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                      else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
+                      else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                      const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
+                      const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
+                      const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
+                      return <span className={`text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>;
+                    }}
                   />
                 </div>
               );
