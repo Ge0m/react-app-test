@@ -201,6 +201,8 @@ const MatchBuilder = () => {
   const [costumes, setCostumes] = useState([]);
   const [aiItems, setAiItems] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [rulesets, setRulesets] = useState(null);
+  const [activeRulesetKey, setActiveRulesetKey] = useState(null);
   const [collapsedMatches, setCollapsedMatches] = useState({});
   const [matchCounter, setMatchCounter] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -259,7 +261,21 @@ const MatchBuilder = () => {
 
   useEffect(() => {
     loadCSVFiles();
+    loadRulesets();
   }, []);
+
+  const loadRulesets = async () => {
+    try {
+      const res = await fetch('/capsule-rules.yaml');
+      const txt = await res.text();
+      const parsed = yaml.load(txt);
+      setRulesets(parsed || null);
+      setActiveRulesetKey((parsed && parsed.default) ? parsed.default : Object.keys(parsed?.rulesets || {})[0] || null);
+    } catch (e) {
+      console.error('Failed to load capsule rules', e);
+      setRulesets(null);
+    }
+  };
 
   const loadCSVFiles = async () => {
     try {
@@ -793,6 +809,20 @@ const MatchBuilder = () => {
             />
           </label>
         </div>
+        <div className="flex justify-center mb-4">
+          {rulesets && rulesets.rulesets ? (
+            <div className="text-sm text-slate-200 bg-slate-800 border border-slate-600 px-3 py-2 rounded-lg">
+              <label className="mr-2">Ruleset:</label>
+              <select value={activeRulesetKey || ''} onChange={(e) => setActiveRulesetKey(e.target.value)} className="bg-transparent outline-none">
+                {Object.keys(rulesets.rulesets).map(k => (
+                  <option key={k} value={k}>{rulesets.rulesets[k].metadata?.name || k}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="text-sm text-slate-400">No capsule rules loaded</div>
+          )}
+        </div>
 
         <div className="space-y-6">
           {matches.map((match) => (
@@ -803,6 +833,8 @@ const MatchBuilder = () => {
               capsules={capsules}
               costumes={costumes}
               aiItems={aiItems}
+              rulesets={rulesets}
+              activeRulesetKey={activeRulesetKey}
               onDuplicate={() => duplicateMatch(match.id)}
               onRemove={() => removeMatch(match.id)}
               onAddCharacter={(teamName) => addCharacter(match.id, teamName)}
@@ -1089,6 +1121,8 @@ const MatchCard = ({
             capsules={capsules}
             costumes={costumes}
             aiItems={aiItems}
+            rulesets={rulesets}
+            activeRulesetKey={activeRulesetKey}
             onAddCharacter={() => onAddCharacter("team1")}
             onRemoveCharacter={(index) => onRemoveCharacter("team1", index)}
             onUpdateCharacter={(index, field, value) =>
@@ -1113,6 +1147,8 @@ const MatchCard = ({
             capsules={capsules}
             costumes={costumes}
             aiItems={aiItems}
+            rulesets={rulesets}
+            activeRulesetKey={activeRulesetKey}
             onAddCharacter={() => onAddCharacter("team2")}
             onRemoveCharacter={(index) => onRemoveCharacter("team2", index)}
             onUpdateCharacter={(index, field, value) =>
@@ -1232,10 +1268,13 @@ const TeamPanel = ({
                 matchId={matchId}
                 matchName={matchName}
                 character={char}
+                team={team}
                 characters={characters}
                 capsules={capsules}
                 costumes={costumes}
                 aiItems={aiItems}
+                rulesets={rulesets}
+                activeRulesetKey={activeRulesetKey}
                 onRemove={() => onRemoveCharacter(index)}
                 onUpdate={(field, value) => onUpdateCharacter(index, field, value)}
                 onUpdateCapsule={(capsuleIndex, value) =>
@@ -1264,10 +1303,13 @@ const CharacterSlot = ({
   matchId,
   matchName,
   character,
+  team,
   characters,
   capsules,
   costumes,
   aiItems,
+  rulesets,
+  activeRulesetKey,
   onRemove,
   onUpdate,
   onUpdateCapsule,
@@ -1324,15 +1366,55 @@ const CharacterSlot = ({
       </div>
       {!collapsed && (
         <div className="space-y-2 mt-3">
-          <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide">
-            Capsules
+          <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide flex items-center justify-between">
+            <span>Capsules</span>
+            <span className="text-xs text-slate-300 font-medium">
+              {(() => {
+                try {
+                  const ruleset = rulesets?.rulesets?.[activeRulesetKey];
+                  if (!ruleset) return '';
+                  if (ruleset.scope !== 'per-character') return '';
+                  const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.Cost || c.cost || 0)]));
+                  const used = (character.capsules||[]).filter(Boolean);
+                  const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                  const remaining = Math.max(0, (ruleset.totalCost || 0) - sumUsed);
+                  return `Budget: ${remaining} / ${ruleset.totalCost}`;
+                } catch (e) { return ''; }
+              })()}
+            </span>
           </label>
           {(() => {
-            // Per-character: compute used capsule ids (non-empty)
+            const ruleset = rulesets?.rulesets?.[activeRulesetKey];
             const usedCapsuleIds = (character.capsules || []).filter(Boolean);
+            // teamUsed includes capsules used by other characters in same team
+            const teamUsed = (team || []).flatMap(ch => ch.capsules || []).filter(Boolean);
+            const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.Cost || c.cost || 0)]));
+
             return character.capsules.map((capsuleId, i) => {
-              // For this slot, allow the currently selected capsuleId to remain in the list
-              const available = (capsules || []).filter(c => c && (c.id === capsuleId || !usedCapsuleIds.includes(c.id)));
+              let available = (capsules || []);
+              // banned ids
+              const banned = (ruleset?.restrictions || []).find(r => r.type === 'banned-ids')?.params?.ids || [];
+              available = available.filter(c => c && !banned.includes(c.id));
+
+              // unique-per-character
+              const uniqueChar = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-character' && r.params?.enabled);
+              if (uniqueChar) {
+                available = available.filter(c => c && (c.id === capsuleId || !usedCapsuleIds.includes(c.id)));
+              }
+
+              // unique-per-team
+              const uniqueTeam = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-team' && r.params?.enabled);
+              if (uniqueTeam) {
+                available = available.filter(c => c && (c.id === capsuleId || !teamUsed.includes(c.id)));
+              }
+
+              // totalCost (hard, per-character)
+              if (ruleset?.mode === 'hard' && ruleset?.scope === 'per-character') {
+                const usedOther = usedCapsuleIds.filter((id, idx) => idx !== i);
+                const sumUsedOther = usedOther.reduce((s, id) => s + (costMap[id] || 0), 0);
+                available = available.filter(c => c && (c.id === capsuleId || (sumUsedOther + (costMap[c.id] || 0)) <= (ruleset.totalCost || 0)));
+              }
+
               return (
                 <div key={i} className="mb-1">
                   <Combobox
