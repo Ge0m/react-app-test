@@ -1327,17 +1327,25 @@ const CharacterSlot = ({
           <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide">
             Capsules
           </label>
-          {character.capsules.map((capsule, i) => (
-            <div key={i} className="mb-1">
-              <Combobox
-                valueId={capsule}
-                items={capsules}
-                getName={(c) => c.name}
-                placeholder={`Capsule ${i + 1}`}
-                onSelect={(id) => onUpdateCapsule(i, id)}
-              />
-            </div>
-          ))}
+          {(() => {
+            // Per-character: compute used capsule ids (non-empty)
+            const usedCapsuleIds = (character.capsules || []).filter(Boolean);
+            return character.capsules.map((capsuleId, i) => {
+              // For this slot, allow the currently selected capsuleId to remain in the list
+              const available = (capsules || []).filter(c => c && (c.id === capsuleId || !usedCapsuleIds.includes(c.id)));
+              return (
+                <div key={i} className="mb-1">
+                  <Combobox
+                    valueId={capsuleId}
+                    items={available}
+                    getName={(c) => c.name}
+                    placeholder={`Capsule ${i + 1}`}
+                    onSelect={(id) => onUpdateCapsule(i, id)}
+                  />
+                </div>
+              );
+            });
+          })()}
 
           <div className="mt-2 pt-2 border-t border-slate-500">
             <label className="block text-xs font-semibold text-blue-300 mb-1 uppercase tracking-wide">
