@@ -320,26 +320,60 @@ const MatchBuilder = () => {
       const caps = [];
       const costs = [];
       const ai = [];
+      // helper to split CSV line respecting quoted fields with commas
+      const splitLine = (line) => {
+        const res = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+          }
+          if (ch === ',' && !inQuotes) {
+            res.push(cur);
+            cur = '';
+            continue;
+          }
+          cur += ch;
+        }
+        res.push(cur);
+        return res.map(s => s.trim());
+      };
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (line) {
-          const parts = line.split(",");
-          if (parts.length >= 3) {
-            const item = {
-              name: parts[0].replace(/"/g, "").trim(),
-              id: parts[1].replace(/"/g, "").trim(),
-              type: parts[2].replace(/"/g, "").trim(),
-            };
+        if (!line) continue;
+        const parts = splitLine(line);
+        if (parts.length >= 3) {
+          const rawName = parts[0] || '';
+          const rawId = parts[1] || '';
+          const rawType = parts[2] || '';
+          const item = {
+            name: rawName.replace(/"/g, "").trim(),
+            id: rawId.replace(/"/g, "").trim(),
+            type: rawType.replace(/"/g, "").trim(),
+            exclusiveFor: parts[3] ? parts[3].replace(/"/g, "").trim() : '',
+            // normalize cost: accept header named Cost or cost or last numeric column
+            cost: 0,
+            effect: parts[5] ? parts[5].replace(/"/g, "").trim() : (parts[4] ? parts[4].replace(/"/g, "").trim() : ''),
+          };
 
-            if (parts.length >= 4) {
-              item.exclusiveFor = parts[3].replace(/"/g, "").trim();
-            }
-
-            if (item.type === "Capsule") caps.push(item);
-            else if (item.type === "Costume") costs.push(item);
-            else if (item.type === "AI") ai.push(item);
+          // try to parse cost from known columns
+          const maybeCost = parts[4] ? parts[4].replace(/"/g, "").trim() : '';
+          const num = Number(maybeCost);
+          if (!isNaN(num) && maybeCost !== '') {
+            item.cost = num;
+          } else {
+            // try to extract a number from the Effect column if present
+            const costMatch = (item.effect || '').match(/(\d+)/);
+            if (costMatch) item.cost = Number(costMatch[1]);
           }
+
+          if (item.type === "Capsule") caps.push(item);
+          else if (item.type === "Costume") costs.push(item);
+          else if (item.type === "AI") ai.push(item);
         }
       }
       setCapsules(caps);
@@ -810,18 +844,20 @@ const MatchBuilder = () => {
           </label>
         </div>
         <div className="flex justify-center mb-4">
-          {rulesets && rulesets.rulesets ? (
-            <div className="text-sm text-slate-200 bg-slate-800 border border-slate-600 px-3 py-2 rounded-lg">
-              <label className="mr-2">Ruleset:</label>
+          <div className="text-sm text-slate-200 bg-slate-800 border border-slate-600 px-3 py-2 rounded-lg">
+            <label className="mr-2">Ruleset:</label>
+            {rulesets && rulesets.rulesets ? (
               <select value={activeRulesetKey || ''} onChange={(e) => setActiveRulesetKey(e.target.value)} className="bg-transparent outline-none">
                 {Object.keys(rulesets.rulesets).map(k => (
                   <option key={k} value={k}>{rulesets.rulesets[k].metadata?.name || k}</option>
                 ))}
               </select>
-            </div>
-          ) : (
-            <div className="text-sm text-slate-400">No capsule rules loaded</div>
-          )}
+            ) : (
+              <select value="" disabled className="bg-transparent outline-none">
+                <option>No capsule rules loaded</option>
+              </select>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -1321,6 +1357,30 @@ const CharacterSlot = ({
   );
   const fileInputRef = React.useRef(null);
 
+  // compute rule violations for soft mode
+  const computeViolations = () => {
+    const violations = [];
+    const ruleset = rulesets?.rulesets?.[activeRulesetKey];
+    if (!ruleset) return violations;
+    const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.cost || 0)]));
+    const used = (character.capsules||[]).filter(Boolean);
+    if (ruleset.mode === 'soft') {
+      if (ruleset.scope === 'per-character' && ruleset.totalCost) {
+        const sum = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+        if (sum > (ruleset.totalCost || 0)) violations.push({ type: 'cost', message: `Character exceeds cost limit (${sum} > ${ruleset.totalCost})` });
+      }
+      const uniqueTeam = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-team' && r.params?.enabled);
+      if (uniqueTeam) {
+        const teamUsed = (team || []).flatMap(ch => ch.capsules || []).filter(Boolean);
+        // duplicates in team
+        const dupSet = used.filter(id => teamUsed.filter(x => x === id).length > 1);
+        if (dupSet.length > 0) violations.push({ type: 'duplicate-team', message: 'Duplicate capsule(s) used within the same team' });
+      }
+    }
+    return violations;
+  };
+  const violations = computeViolations();
+
   return (
   <div className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg p-3 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-500 flex flex-col relative z-10">
       <div className="flex justify-between items-start mb-3">
@@ -1366,6 +1426,11 @@ const CharacterSlot = ({
       </div>
       {!collapsed && (
         <div className="space-y-2 mt-3">
+          {violations.length > 0 && (
+            <div className="bg-yellow-600 text-slate-900 px-3 py-2 rounded mb-2 font-semibold">
+              ⚠️ {violations.map(v => v.message).join(' · ')}
+            </div>
+          )}
           <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide flex items-center justify-between">
             <span>Capsules</span>
             <span className="text-xs text-slate-300 font-medium">
