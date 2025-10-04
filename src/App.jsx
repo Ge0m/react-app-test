@@ -1044,9 +1044,10 @@ const Combobox = ({
   const [tooltipContent, setTooltipContent] = useState("");
   const tooltipTimer = useRef(null);
   const blurTimer = useRef(null);
-  const selectedHoverRef = useRef(false);
+  const selectedHoverNodeRef = useRef(null);
   const lastShowRef = useRef(0);
   const currentTooltipRef = useRef(null);
+  const myComboboxId = useRef(typeof window !== 'undefined' ? (window.__combobox_id_counter = (window.__combobox_id_counter || 0) + 1) : Math.random());
   const { x: tx, y: ty, strategy: tStrategy, refs: tRefs, floatingStyles: tFloatingStyles, update: tUpdate } = useFloating({
     placement: 'top',
     middleware: [offset(8), flip()],
@@ -1054,7 +1055,10 @@ const Combobox = ({
   });
 
   const showTooltipFor = (el, content) => {
+    // Force any other combobox instances to hide their tooltips immediately
+    try { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('combobox:hide-all')); } catch(e){}
     if (!el) return;
+    // Always clear any pending tooltip timers immediately
     if (tooltipTimer.current) {
       clearTimeout(tooltipTimer.current);
       tooltipTimer.current = null;
@@ -1063,46 +1067,54 @@ const Combobox = ({
       clearTimeout(blurTimer.current);
       blurTimer.current = null;
     }
-  // remember which node the tooltip is for so rapid hover changes don't keep older tooltips protected
-  currentTooltipRef.current = el;
+    // choose a stable DOM node to anchor the tooltip
+    const node = (el && (el.nodeType ? el : (el.current || null))) || null;
+    const attached = node && typeof document !== 'undefined' && document.body.contains(node);
+    const refNode = attached ? node : (inputRef.current || node);
+  currentTooltipRef.current = refNode;
+  // mark this combobox as the globally active tooltip owner
+  try { if (typeof window !== 'undefined') window.__combobox_activeId = myComboboxId.current; } catch (e) {}
     setTooltipContent(content || "");
     lastShowRef.current = Date.now();
-    // Prefer an attached DOM node for the reference. If the passed 'el' is not attached
-    // (can happen during selection and re-render), fall back to the inputRef so Floating
-    // UI positions the tooltip correctly instead of rendering at 0,0.
-    try {
-      const node = (el && (el.nodeType ? el : (el.current || null))) || null;
-      const attached = node && typeof document !== 'undefined' && document.body.contains(node);
-      const refNode = attached ? node : inputRef.current;
-      try { tRefs.setReference(refNode); } catch (e) {}
-    } catch (err) {
-      try { tRefs.setReference(inputRef.current); } catch (e) {}
-    }
+    try { tRefs.setReference(refNode); } catch (e) {}
     setTooltipOpen(true);
-    // ensure floating updates after refs settle
+    // schedule update after refs settle
     try { if (typeof tUpdate === 'function') setTimeout(() => { try { tUpdate(); } catch(e){} }, 0); } catch(e){}
   };
+
+  // Listen for a global 'hide all' event so any combobox can force other
+  // instances to immediately hide their tooltips. This is used to prevent
+  // overlapping tooltips when quickly moving the pointer across controls.
+  React.useEffect(() => {
+    const handler = () => { try { hideTooltipNow(); } catch(e){} };
+    try { document.addEventListener('combobox:hide-all', handler); } catch(e){}
+    return () => { try { document.removeEventListener('combobox:hide-all', handler); } catch(e){} };
+  }, []);
 
   const hideTooltipSoon = (delay = 120) => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
     tooltipTimer.current = setTimeout(() => {
-      // If the selected-value is currently hovered, abort hiding to avoid flicker
-      if (selectedHoverRef.current) {
-        // only abort hide if the selected hovered node is the same node the tooltip is currently attached to
-        if (currentTooltipRef.current && currentTooltipRef.current === document.activeElement) {
+      // if another combobox has become active since this hide was scheduled, allow hide immediately
+      try { if (typeof window !== 'undefined' && window.__combobox_activeId && window.__combobox_activeId !== myComboboxId.current) {
+        // another combobox is active; proceed to hide
+      } } catch(e){}
+      // If the selected-value is currently hovered, and it's the same node the tooltip
+      // is anchored to, abort hiding to avoid flicker
+      if (selectedHoverNodeRef.current) {
+        if (currentTooltipRef.current && currentTooltipRef.current === selectedHoverNodeRef.current) {
           tooltipTimer.current = null;
           return;
         }
       }
       // If a tooltip was shown very recently, avoid hiding immediately (anti-flicker)
       const now = Date.now();
-      if (lastShowRef.current && (now - lastShowRef.current) < 250) {
+      if (lastShowRef.current && (now - lastShowRef.current) < 300) {
         tooltipTimer.current = null;
         return;
       }
-  // executing hide
       setTooltipOpen(false);
       setTooltipContent("");
+      currentTooltipRef.current = null;
       tooltipTimer.current = null;
     }, delay);
   };
@@ -1111,6 +1123,7 @@ const Combobox = ({
     if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null; }
     if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; }
     currentTooltipRef.current = null;
+    try { if (typeof window !== 'undefined' && window.__combobox_activeId === myComboboxId.current) window.__combobox_activeId = null; } catch(e){}
     setTooltipOpen(false);
     setTooltipContent("");
   };
@@ -1220,7 +1233,7 @@ const Combobox = ({
 
   return (
     <div className="relative" onKeyDown={onKeyDown}>
-      <div className="relative">
+      <div className="relative" onPointerLeave={() => { if (showTooltip) hideTooltipNow(); }}>
         <input
           ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
           type="text"
@@ -1244,26 +1257,26 @@ const Combobox = ({
         {renderValueRight && selectedItem ? (
           <div
             className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-auto"
-            onMouseEnter={(e) => { if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; } selectedHoverRef.current = true; if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
-            onMouseLeave={() => { selectedHoverRef.current = false; if (showTooltip) hideTooltipSoon(); }}
+            onMouseEnter={(e) => { if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; } selectedHoverNodeRef.current = e.currentTarget; if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
+            onMouseLeave={() => { selectedHoverNodeRef.current = null; if (showTooltip) hideTooltipNow(); }}
             onFocus={(e) => { if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
-            onBlur={() => { if (showTooltip) hideTooltipSoon(); }}
+            onBlur={() => { if (showTooltip) hideTooltipNow(); }}
             tabIndex={-1}
           >
             {renderValueRight(selectedItem)}
           </div>
         ) : null}
       {open && filtered.length > 0 && (
-        (typeof document !== 'undefined')
+          (typeof document !== 'undefined')
           ? createPortal(
-            <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
+            <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" onPointerLeave={() => { if (showTooltip) hideTooltipNow(); }} className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
               {filtered.map((it, idx) => (
                 <li
                   data-idx={idx}
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
-                  onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
+                  onMouseEnter={(e) => { try { hideTooltipNow(); } catch(e){}; setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { if (showTooltip) hideTooltipNow(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
                   <div className="flex items-center justify-between">
@@ -1277,14 +1290,14 @@ const Combobox = ({
             </ul>,
             document.body
           ) : (
-            <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
+            <ul ref={listRef} onPointerLeave={() => { if (showTooltip) hideTooltipNow(); }} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
               {filtered.map((it, idx) => (
                 <li
                   data-idx={idx}
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
-                  onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
+                  onMouseEnter={(e) => { try { hideTooltipNow(); } catch(e){}; setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { if (showTooltip) hideTooltipNow(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
                   <div className="flex items-center justify-between">
@@ -1753,7 +1766,7 @@ const CharacterSlot = ({
                       const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
                       const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
                       const over = sumUsed - total;
-                      const EXPENSIVE_THRESHOLD = 5; // adjust as desired
+                      const EXPENSIVE_THRESHOLD = 10; // adjust as desired
                       // determine base color by cost
                       let baseClass = 'bg-amber-200 text-slate-800';
                       if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
@@ -1773,7 +1786,7 @@ const CharacterSlot = ({
                       const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
                       const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
                       const over = sumUsed - total;
-                      const EXPENSIVE_THRESHOLD = 5;
+                      const EXPENSIVE_THRESHOLD = 10;
                       let baseClass = 'bg-amber-200 text-slate-800';
                       if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
                       else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
