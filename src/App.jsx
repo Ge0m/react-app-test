@@ -1045,6 +1045,8 @@ const Combobox = ({
   const tooltipTimer = useRef(null);
   const blurTimer = useRef(null);
   const selectedHoverRef = useRef(false);
+  const lastShowRef = useRef(0);
+  const currentTooltipRef = useRef(null);
   const { x: tx, y: ty, strategy: tStrategy, refs: tRefs, floatingStyles: tFloatingStyles, update: tUpdate } = useFloating({
     placement: 'top',
     middleware: [offset(8), flip()],
@@ -1061,10 +1063,24 @@ const Combobox = ({
       clearTimeout(blurTimer.current);
       blurTimer.current = null;
     }
+  // remember which node the tooltip is for so rapid hover changes don't keep older tooltips protected
+  currentTooltipRef.current = el;
     setTooltipContent(content || "");
-    try { tRefs.setReference(el); } catch (e) {}
+    lastShowRef.current = Date.now();
+    // Prefer an attached DOM node for the reference. If the passed 'el' is not attached
+    // (can happen during selection and re-render), fall back to the inputRef so Floating
+    // UI positions the tooltip correctly instead of rendering at 0,0.
+    try {
+      const node = (el && (el.nodeType ? el : (el.current || null))) || null;
+      const attached = node && typeof document !== 'undefined' && document.body.contains(node);
+      const refNode = attached ? node : inputRef.current;
+      try { tRefs.setReference(refNode); } catch (e) {}
+    } catch (err) {
+      try { tRefs.setReference(inputRef.current); } catch (e) {}
+    }
     setTooltipOpen(true);
-    try { if (typeof tUpdate === 'function') tUpdate(); } catch(e){}
+    // ensure floating updates after refs settle
+    try { if (typeof tUpdate === 'function') setTimeout(() => { try { tUpdate(); } catch(e){} }, 0); } catch(e){}
   };
 
   const hideTooltipSoon = (delay = 120) => {
@@ -1072,9 +1088,19 @@ const Combobox = ({
     tooltipTimer.current = setTimeout(() => {
       // If the selected-value is currently hovered, abort hiding to avoid flicker
       if (selectedHoverRef.current) {
+        // only abort hide if the selected hovered node is the same node the tooltip is currently attached to
+        if (currentTooltipRef.current && currentTooltipRef.current === document.activeElement) {
+          tooltipTimer.current = null;
+          return;
+        }
+      }
+      // If a tooltip was shown very recently, avoid hiding immediately (anti-flicker)
+      const now = Date.now();
+      if (lastShowRef.current && (now - lastShowRef.current) < 250) {
         tooltipTimer.current = null;
         return;
       }
+  // executing hide
       setTooltipOpen(false);
       setTooltipContent("");
       tooltipTimer.current = null;
@@ -1084,6 +1110,7 @@ const Combobox = ({
   const hideTooltipNow = () => {
     if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null; }
     if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; }
+    currentTooltipRef.current = null;
     setTooltipOpen(false);
     setTooltipContent("");
   };
@@ -1128,6 +1155,8 @@ const Combobox = ({
       onSelect('', '');
     }
     closeList();
+    // hide tooltip immediately on selection to avoid dangling/tooltips at 0,0
+    try { hideTooltipNow(); } catch (e) {}
     inputRef.current?.blur();
   };
 
@@ -1200,7 +1229,7 @@ const Combobox = ({
           onFocus={(e) => { openList(); if (showTooltip && selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
           onBlur={(e) => {
             if (blurTimer.current) clearTimeout(blurTimer.current);
-            blurTimer.current = setTimeout(() => { closeList(); if (showTooltip) hideTooltipNow(); blurTimer.current = null; }, 150);
+            blurTimer.current = setTimeout(() => { closeList(); if (showTooltip) hideTooltipNow(); blurTimer.current = null; }, 200);
           }}
           onMouseEnter={(e) => { if (showTooltip && selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
           onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
