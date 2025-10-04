@@ -1012,6 +1012,8 @@ const Combobox = ({
   disabled = false,
   renderItemRight = null,
   renderValueRight = null,
+  // whether this combobox should show the effect tooltip on hover/focus
+  showTooltip = true,
 }) => {
   const [input, setInput] = useState(() => {
     const found = items.find((it) => it.id === valueId);
@@ -1041,6 +1043,8 @@ const Combobox = ({
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [tooltipContent, setTooltipContent] = useState("");
   const tooltipTimer = useRef(null);
+  const blurTimer = useRef(null);
+  const selectedHoverRef = useRef(false);
   const { x: tx, y: ty, strategy: tStrategy, refs: tRefs, floatingStyles: tFloatingStyles, update: tUpdate } = useFloating({
     placement: 'top',
     middleware: [offset(8), flip()],
@@ -1053,6 +1057,10 @@ const Combobox = ({
       clearTimeout(tooltipTimer.current);
       tooltipTimer.current = null;
     }
+    if (blurTimer.current) {
+      clearTimeout(blurTimer.current);
+      blurTimer.current = null;
+    }
     setTooltipContent(content || "");
     try { tRefs.setReference(el); } catch (e) {}
     setTooltipOpen(true);
@@ -1062,6 +1070,11 @@ const Combobox = ({
   const hideTooltipSoon = (delay = 120) => {
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
     tooltipTimer.current = setTimeout(() => {
+      // If the selected-value is currently hovered, abort hiding to avoid flicker
+      if (selectedHoverRef.current) {
+        tooltipTimer.current = null;
+        return;
+      }
       setTooltipOpen(false);
       setTooltipContent("");
       tooltipTimer.current = null;
@@ -1070,6 +1083,7 @@ const Combobox = ({
 
   const hideTooltipNow = () => {
     if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null; }
+    if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; }
     setTooltipOpen(false);
     setTooltipContent("");
   };
@@ -1150,6 +1164,31 @@ const Combobox = ({
     if (typeof update === 'function') update();
   }, [open, refs, update]);
 
+  // When highlight changes due to keyboard navigation, ensure the highlighted
+  // list item is scrolled into view and (if enabled) show the tooltip for it.
+  useEffect(() => {
+    if (!open || highlight < 0) {
+      if (showTooltip) hideTooltipSoon();
+      return;
+    }
+    // find the rendered list container (portal floating or inline listRef)
+    const container = (refs && refs.floating && refs.floating.current) || listRef.current;
+    if (!container) return;
+    const item = container.querySelector(`[data-idx=\"${highlight}\"]`);
+    if (item) {
+      try {
+        // scroll highlighted item into view within the container
+        item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (e) {}
+      if (showTooltip) {
+        try {
+          const node = item.querySelector('.combobox-item-name');
+          if (node) showTooltipFor(node, (filtered[highlight] && (filtered[highlight].effect || filtered[highlight].Effect)) || '');
+        } catch (e) {}
+      }
+    }
+  }, [highlight, open, refs, listRef, showTooltip, filtered]);
+
   return (
     <div className="relative" onKeyDown={onKeyDown}>
       <div className="relative">
@@ -1158,10 +1197,13 @@ const Combobox = ({
           type="text"
           value={input}
           onChange={(e) => { setInput(e.target.value); openList(); }}
-          onFocus={(e) => { openList(); if (selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
-          onBlur={(e) => { setTimeout(() => { closeList(); hideTooltipNow(); }, 150); }}
-          onMouseEnter={(e) => { if (selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
-          onMouseLeave={() => hideTooltipSoon()}
+          onFocus={(e) => { openList(); if (showTooltip && selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
+          onBlur={(e) => {
+            if (blurTimer.current) clearTimeout(blurTimer.current);
+            blurTimer.current = setTimeout(() => { closeList(); if (showTooltip) hideTooltipNow(); blurTimer.current = null; }, 150);
+          }}
+          onMouseEnter={(e) => { if (showTooltip && selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
+          onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
           placeholder={placeholder}
           disabled={disabled}
           aria-label={placeholder}
@@ -1171,7 +1213,14 @@ const Combobox = ({
           aria-expanded={open}
         />
         {renderValueRight && selectedItem ? (
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+          <div
+            className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-auto"
+            onMouseEnter={(e) => { if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; } selectedHoverRef.current = true; if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
+            onMouseLeave={() => { selectedHoverRef.current = false; if (showTooltip) hideTooltipSoon(); }}
+            onFocus={(e) => { if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
+            onBlur={() => { if (showTooltip) hideTooltipSoon(); }}
+            tabIndex={-1}
+          >
             {renderValueRight(selectedItem)}
           </div>
         ) : null}
@@ -1181,14 +1230,15 @@ const Combobox = ({
             <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
               {filtered.map((it, idx) => (
                 <li
+                  data-idx={idx}
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
-                  onMouseLeave={() => { hideTooltipSoon(); }}
+                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || '')} onBlur={() => hideTooltipSoon()}>{getName(it)}</span>
+                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => { if (showTooltip) showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || ''); }} onBlur={() => { if (showTooltip) hideTooltipSoon(); }}>{getName(it)}</span>
                     {renderItemRight ? renderItemRight(it) : ((typeof it === 'object' && (it.cost || it.Cost)) ? (
                       <span className="ml-2 text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{Number(it.cost || it.Cost || 0)}</span>
                     ) : null)}
@@ -1201,14 +1251,15 @@ const Combobox = ({
             <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
               {filtered.map((it, idx) => (
                 <li
+                  data-idx={idx}
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
-                  onMouseLeave={() => { hideTooltipSoon(); }}
+                  onMouseEnter={(e) => { setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || '')} onBlur={() => hideTooltipSoon()}>{getName(it)}</span>
+                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => { if (showTooltip) showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || ''); }} onBlur={() => { if (showTooltip) hideTooltipSoon(); }}>{getName(it)}</span>
                     {renderItemRight ? renderItemRight(it) : ((typeof it === 'object' && (it.cost || it.Cost)) ? (
                       <span className="ml-2 text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{Number(it.cost || it.Cost || 0)}</span>
                     ) : null)}
@@ -1227,6 +1278,7 @@ const Combobox = ({
         document.body
       ) : null}
     </div>
+  </div>
   );
 };
 
@@ -1568,6 +1620,7 @@ const CharacterSlot = ({
               getName={(c) => c.name}
               placeholder="Type or select character"
               onSelect={(id) => onUpdate('id', id)}
+              showTooltip={false}
             />
           </div>
 
@@ -1582,6 +1635,7 @@ const CharacterSlot = ({
               placeholder="Type or select costume"
               onSelect={(id) => onUpdate('costume', id)}
               disabled={!character.name}
+              showTooltip={false}
             />
           </div>
         </div>
@@ -1716,6 +1770,7 @@ const CharacterSlot = ({
               getName={(a) => a.name}
               placeholder="Type or select AI strategy"
               onSelect={(id) => onUpdate('ai', id)}
+              showTooltip={false}
             />
           </div>
           <div className="flex justify-between items-center">
