@@ -264,16 +264,83 @@ const MatchBuilder = () => {
     loadRulesets();
   }, []);
 
+  // Fallback ruleset used when capsule-rules.yaml cannot be loaded or parsed.
+  // This represents the "no rules" behavior the site had before rulesets existed.
+  const FALLBACK_RULES = {
+    default: 'none',
+    rulesets: {
+      none: {
+        metadata: { name: 'No rules (fallback)', description: 'No restrictions - legacy behavior' },
+        scope: 'none',
+        mode: 'soft',
+        totalCost: 0,
+        restrictions: []
+      }
+    }
+  };
+
   const loadRulesets = async () => {
     try {
-      const res = await fetch('/capsule-rules.yaml');
-      const txt = await res.text();
-      const parsed = yaml.load(txt);
+      // Try a few sensible locations so the app works when hosted at
+      // the site root or under a repo subpath (e.g. GitHub Pages /<repo>/)
+      const candidates = [];
+      try { candidates.push(new URL('capsule-rules.yaml', window.location.href).href); } catch (e) {}
+      if (import.meta && import.meta.env && import.meta.env.BASE_URL) {
+        try { candidates.push(new URL('capsule-rules.yaml', import.meta.env.BASE_URL).href); } catch(e) {}
+      }
+      candidates.push('/capsule-rules.yaml');
+      candidates.push('capsule-rules.yaml');
+
+      let txt = null;
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const t = await res.text();
+          const tTrim = (t || '').trim();
+          // If the fetch returned an HTML page (e.g. GitHub Pages 404), skip it
+          if (tTrim.startsWith('<!DOCTYPE') || tTrim.startsWith('<html') || tTrim.includes('<title>Site not found') || tTrim.includes('<h1>404')) {
+            console.warn('Skipping non-YAML response when loading rules from', url);
+            continue;
+          }
+          txt = t;
+          break;
+        } catch (err) {
+          // try next candidate
+          continue;
+        }
+      }
+
+      if (!txt) {
+        // no file found, use fallback
+        setRulesets(FALLBACK_RULES);
+        setActiveRulesetKey(FALLBACK_RULES.default || Object.keys(FALLBACK_RULES.rulesets)[0]);
+        return;
+      }
+
+      let parsed = null;
+      try {
+        parsed = yaml.load(txt);
+      } catch (e) {
+        console.warn('Failed to parse capsule-rules.yaml, using fallback', e);
+        setRulesets(FALLBACK_RULES);
+        setActiveRulesetKey(FALLBACK_RULES.default || Object.keys(FALLBACK_RULES.rulesets)[0]);
+        return;
+      }
+
+      if (!parsed || !parsed.rulesets) {
+        // invalid format -> fallback
+        setRulesets(FALLBACK_RULES);
+        setActiveRulesetKey(FALLBACK_RULES.default || Object.keys(FALLBACK_RULES.rulesets)[0]);
+        return;
+      }
+
       setRulesets(parsed || null);
       setActiveRulesetKey((parsed && parsed.default) ? parsed.default : Object.keys(parsed?.rulesets || {})[0] || null);
     } catch (e) {
       console.error('Failed to load capsule rules', e);
       setRulesets(null);
+      setActiveRulesetKey(null);
     }
   };
 
@@ -846,7 +913,7 @@ const MatchBuilder = () => {
         <div className="flex justify-center mb-4">
           <div className="text-sm text-slate-200 bg-slate-800 border border-slate-600 px-3 py-2 rounded-lg">
             <label className="mr-2">Ruleset:</label>
-            {rulesets && rulesets.rulesets ? (
+            {(typeof rulesets !== 'undefined' && rulesets && rulesets.rulesets) ? (
               <select value={activeRulesetKey || ''} onChange={(e) => setActiveRulesetKey(e.target.value)} className="bg-transparent outline-none">
                 {Object.keys(rulesets.rulesets).map(k => (
                   <option key={k} value={k}>{rulesets.rulesets[k].metadata?.name || k}</option>
@@ -869,7 +936,7 @@ const MatchBuilder = () => {
               capsules={capsules}
               costumes={costumes}
               aiItems={aiItems}
-              rulesets={rulesets}
+              rulesets={rulesets || null}
               activeRulesetKey={activeRulesetKey}
               onDuplicate={() => duplicateMatch(match.id)}
               onRemove={() => removeMatch(match.id)}
@@ -1069,6 +1136,8 @@ const MatchCard = ({
   capsules,
   costumes,
   aiItems,
+  rulesets,
+  activeRulesetKey,
   onDuplicate,
   onRemove,
   onAddCharacter,
@@ -1149,7 +1218,7 @@ const MatchCard = ({
       </div>
       {!collapsed && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <TeamPanel
+            <TeamPanel
             teamName="team1"
             displayName={match.team1Name}
             team={match.team1}
@@ -1157,7 +1226,7 @@ const MatchCard = ({
             capsules={capsules}
             costumes={costumes}
             aiItems={aiItems}
-            rulesets={rulesets}
+            rulesets={rulesets || null}
             activeRulesetKey={activeRulesetKey}
             onAddCharacter={() => onAddCharacter("team1")}
             onRemoveCharacter={(index) => onRemoveCharacter("team1", index)}
@@ -1183,7 +1252,7 @@ const MatchCard = ({
             capsules={capsules}
             costumes={costumes}
             aiItems={aiItems}
-            rulesets={rulesets}
+            rulesets={rulesets || null}
             activeRulesetKey={activeRulesetKey}
             onAddCharacter={() => onAddCharacter("team2")}
             onRemoveCharacter={(index) => onRemoveCharacter("team2", index)}
@@ -1214,6 +1283,8 @@ const TeamPanel = ({
   capsules,
   costumes,
   aiItems,
+  rulesets,
+  activeRulesetKey,
   onAddCharacter,
   onRemoveCharacter,
   onUpdateCharacter,
