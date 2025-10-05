@@ -18,6 +18,30 @@ const findAiIdFromValue = (val, aiItems) => {
   return byName ? byName.id : "";
 };
 
+// Hoisted RulesetSelector so it's available before it's referenced in JSX
+function RulesetSelector({ rulesets, activeKey, onChange }) {
+  const items = Object.keys((rulesets && rulesets.rulesets) || {}).map((k) => ({
+    id: k,
+    name: (rulesets.rulesets[k] && rulesets.rulesets[k].metadata && rulesets.rulesets[k].metadata.name) || k,
+  }));
+  return (
+    <div>
+      <select
+        className="bg-slate-800 text-white px-2 py-1 rounded-lg"
+        value={activeKey || ""}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">None</option>
+        {items.map((it) => (
+          <option key={it.id} value={it.id}>
+            {it.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 const MatchBuilder = () => {
   // Helper to download a file
   const downloadFile = (filename, content, type = "text/yaml") => {
@@ -120,7 +144,12 @@ const MatchBuilder = () => {
       team2: (match.team2 || []).map((char) => ({
         character: char.name || (characters.find(c => c.id === char.id)?.name || ""),
         costume: char.costume ? (costumes.find(c => c.id === char.costume)?.name || char.costume) : "",
-        capsules: (char.capsules || []).filter(Boolean).map(cid => capsules.find(c => c.id === cid)?.name || cid),
+        capsules: (char.capsules || []).filter(Boolean).map(cid => {
+          const cap = capsules.find(c => c.id === cid);
+          const name = cap ? cap.name : cid;
+          const cost = cap ? Number(cap.cost || cap.Cost || 0) : 0;
+          return `${name}${cost ? ` (${cost})` : ''}`;
+        }),
         ai: char.ai ? (aiItems.find(ai => ai.id === char.ai)?.name || char.ai) : ""
       }))
     };
@@ -201,6 +230,8 @@ const MatchBuilder = () => {
   const [costumes, setCostumes] = useState([]);
   const [aiItems, setAiItems] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [rulesets, setRulesets] = useState(null);
+  const [activeRulesetKey, setActiveRulesetKey] = useState(null);
   const [collapsedMatches, setCollapsedMatches] = useState({});
   const [matchCounter, setMatchCounter] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -259,7 +290,88 @@ const MatchBuilder = () => {
 
   useEffect(() => {
     loadCSVFiles();
+    loadRulesets();
   }, []);
+
+  // Fallback ruleset used when capsule-rules.yaml cannot be loaded or parsed.
+  // This represents the "no rules" behavior the site had before rulesets existed.
+  const FALLBACK_RULES = {
+    default: 'none',
+    rulesets: {
+      none: {
+        metadata: { name: 'No rules (fallback)', description: 'No restrictions - legacy behavior' },
+        scope: 'none',
+        mode: 'soft',
+        totalCost: 0,
+        restrictions: []
+      }
+    }
+  };
+
+  const loadRulesets = async () => {
+    try {
+      // Try a few sensible locations so the app works when hosted at
+      // the site root or under a repo subpath (e.g. GitHub Pages /<repo>/)
+      const candidates = [];
+      try { candidates.push(new URL('capsule-rules.yaml', window.location.href).href); } catch (e) {}
+      if (import.meta && import.meta.env && import.meta.env.BASE_URL) {
+        try { candidates.push(new URL('capsule-rules.yaml', import.meta.env.BASE_URL).href); } catch(e) {}
+      }
+      candidates.push('/capsule-rules.yaml');
+      candidates.push('capsule-rules.yaml');
+
+      let txt = null;
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const t = await res.text();
+          const tTrim = (t || '').trim();
+          // If the fetch returned an HTML page (e.g. GitHub Pages 404), skip it
+          if (tTrim.startsWith('<!DOCTYPE') || tTrim.startsWith('<html') || tTrim.includes('<title>Site not found') || tTrim.includes('<h1>404')) {
+            console.warn('Skipping non-YAML response when loading rules from', url);
+            continue;
+          }
+          txt = t;
+          break;
+        } catch (err) {
+          // try next candidate
+          continue;
+        }
+      }
+
+      if (!txt) {
+        // no file found, use fallback
+        setRulesets(FALLBACK_RULES);
+        setActiveRulesetKey(FALLBACK_RULES.default || Object.keys(FALLBACK_RULES.rulesets)[0]);
+        return;
+      }
+
+      let parsed = null;
+      try {
+        parsed = yaml.load(txt);
+      } catch (e) {
+        console.warn('Failed to parse capsule-rules.yaml, using fallback', e);
+        setRulesets(FALLBACK_RULES);
+        setActiveRulesetKey(FALLBACK_RULES.default || Object.keys(FALLBACK_RULES.rulesets)[0]);
+        return;
+      }
+
+      if (!parsed || !parsed.rulesets) {
+        // invalid format -> fallback
+        setRulesets(FALLBACK_RULES);
+        setActiveRulesetKey(FALLBACK_RULES.default || Object.keys(FALLBACK_RULES.rulesets)[0]);
+        return;
+      }
+
+      setRulesets(parsed || null);
+      setActiveRulesetKey((parsed && parsed.default) ? parsed.default : Object.keys(parsed?.rulesets || {})[0] || null);
+    } catch (e) {
+      console.error('Failed to load capsule rules', e);
+      setRulesets(null);
+      setActiveRulesetKey(null);
+    }
+  };
 
   const loadCSVFiles = async () => {
     try {
@@ -304,26 +416,60 @@ const MatchBuilder = () => {
       const caps = [];
       const costs = [];
       const ai = [];
+      // helper to split CSV line respecting quoted fields with commas
+      const splitLine = (line) => {
+        const res = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+          }
+          if (ch === ',' && !inQuotes) {
+            res.push(cur);
+            cur = '';
+            continue;
+          }
+          cur += ch;
+        }
+        res.push(cur);
+        return res.map(s => s.trim());
+      };
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (line) {
-          const parts = line.split(",");
-          if (parts.length >= 3) {
-            const item = {
-              name: parts[0].replace(/"/g, "").trim(),
-              id: parts[1].replace(/"/g, "").trim(),
-              type: parts[2].replace(/"/g, "").trim(),
-            };
+        if (!line) continue;
+        const parts = splitLine(line);
+        if (parts.length >= 3) {
+          const rawName = parts[0] || '';
+          const rawId = parts[1] || '';
+          const rawType = parts[2] || '';
+          const item = {
+            name: rawName.replace(/"/g, "").trim(),
+            id: rawId.replace(/"/g, "").trim(),
+            type: rawType.replace(/"/g, "").trim(),
+            exclusiveFor: parts[3] ? parts[3].replace(/"/g, "").trim() : '',
+            // normalize cost: accept header named Cost or cost or last numeric column
+            cost: 0,
+            effect: parts[5] ? parts[5].replace(/"/g, "").trim() : (parts[4] ? parts[4].replace(/"/g, "").trim() : ''),
+          };
 
-            if (parts.length >= 4) {
-              item.exclusiveFor = parts[3].replace(/"/g, "").trim();
-            }
-
-            if (item.type === "Capsule") caps.push(item);
-            else if (item.type === "Costume") costs.push(item);
-            else if (item.type === "AI") ai.push(item);
+          // try to parse cost from known columns
+          const maybeCost = parts[4] ? parts[4].replace(/"/g, "").trim() : '';
+          const num = Number(maybeCost);
+          if (!isNaN(num) && maybeCost !== '') {
+            item.cost = num;
+          } else {
+            // try to extract a number from the Effect column if present
+            const costMatch = (item.effect || '').match(/(\d+)/);
+            if (costMatch) item.cost = Number(costMatch[1]);
           }
+
+          if (item.type === "Capsule") caps.push(item);
+          else if (item.type === "Costume") costs.push(item);
+          else if (item.type === "AI") ai.push(item);
         }
       }
       setCapsules(caps);
@@ -793,6 +939,21 @@ const MatchBuilder = () => {
             />
           </label>
         </div>
+        <div className="flex justify-center mb-4 items-center gap-3">
+          <div className="text-sm text-slate-300">Ruleset:</div>
+          <div className="text-sm bg-slate-800 border border-slate-600 px-2 py-1 rounded-lg">
+            {/* Use the shared Combobox for consistent styling */}
+            {(typeof rulesets !== 'undefined' && rulesets && rulesets.rulesets) ? (
+              <RulesetSelector
+                rulesets={rulesets}
+                activeKey={activeRulesetKey}
+                onChange={(k) => setActiveRulesetKey(k)}
+              />
+            ) : (
+              <div className="text-slate-400 px-2 py-1">No capsule rules loaded</div>
+            )}
+          </div>
+        </div>
 
         <div className="space-y-6">
           {matches.map((match) => (
@@ -803,6 +964,8 @@ const MatchBuilder = () => {
               capsules={capsules}
               costumes={costumes}
               aiItems={aiItems}
+              rulesets={rulesets || null}
+              activeRulesetKey={activeRulesetKey}
               onDuplicate={() => duplicateMatch(match.id)}
               onRemove={() => removeMatch(match.id)}
               onAddCharacter={(teamName) => addCharacter(match.id, teamName)}
@@ -847,11 +1010,18 @@ const Combobox = ({
   onSelect, // (id, name)
   getName = (it) => it.name,
   disabled = false,
+  renderItemRight = null,
+  renderValueRight = null,
+  // whether this combobox should show the effect tooltip on hover/focus
+  showTooltip = true,
 }) => {
   const [input, setInput] = useState(() => {
     const found = items.find((it) => it.id === valueId);
     return found ? getName(found) : "";
   });
+
+  // Small selector component that wraps Combobox for rulesets
+  // (ruleset selector moved to top-level RulesetSelector for proper hoisting)
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const listRef = useRef(null);
@@ -867,6 +1037,96 @@ const Combobox = ({
   const filtered = input
     ? items.filter((it) => getName(it).toLowerCase().includes(input.toLowerCase()))
     : items.slice(0, 50);
+
+  const selectedItem = items.find((it) => it.id === valueId);
+  // Tooltip state for showing item effects on hover/focus
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [tooltipContent, setTooltipContent] = useState("");
+  const tooltipTimer = useRef(null);
+  const blurTimer = useRef(null);
+  const selectedHoverNodeRef = useRef(null);
+  const lastShowRef = useRef(0);
+  const currentTooltipRef = useRef(null);
+  const myComboboxId = useRef(typeof window !== 'undefined' ? (window.__combobox_id_counter = (window.__combobox_id_counter || 0) + 1) : Math.random());
+  const { x: tx, y: ty, strategy: tStrategy, refs: tRefs, floatingStyles: tFloatingStyles, update: tUpdate } = useFloating({
+    placement: 'top',
+    middleware: [offset(8), flip()],
+    whileElementsMounted: autoUpdate,
+  });
+
+  const showTooltipFor = (el, content) => {
+    // Force any other combobox instances to hide their tooltips immediately
+    try { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('combobox:hide-all')); } catch(e){}
+    if (!el) return;
+    // Always clear any pending tooltip timers immediately
+    if (tooltipTimer.current) {
+      clearTimeout(tooltipTimer.current);
+      tooltipTimer.current = null;
+    }
+    if (blurTimer.current) {
+      clearTimeout(blurTimer.current);
+      blurTimer.current = null;
+    }
+    // choose a stable DOM node to anchor the tooltip
+    const node = (el && (el.nodeType ? el : (el.current || null))) || null;
+    const attached = node && typeof document !== 'undefined' && document.body.contains(node);
+    const refNode = attached ? node : (inputRef.current || node);
+  currentTooltipRef.current = refNode;
+  // mark this combobox as the globally active tooltip owner
+  try { if (typeof window !== 'undefined') window.__combobox_activeId = myComboboxId.current; } catch (e) {}
+    setTooltipContent(content || "");
+    lastShowRef.current = Date.now();
+    try { tRefs.setReference(refNode); } catch (e) {}
+    setTooltipOpen(true);
+    // schedule update after refs settle
+    try { if (typeof tUpdate === 'function') setTimeout(() => { try { tUpdate(); } catch(e){} }, 0); } catch(e){}
+  };
+
+  // Listen for a global 'hide all' event so any combobox can force other
+  // instances to immediately hide their tooltips. This is used to prevent
+  // overlapping tooltips when quickly moving the pointer across controls.
+  React.useEffect(() => {
+    const handler = () => { try { hideTooltipNow(); } catch(e){} };
+    try { document.addEventListener('combobox:hide-all', handler); } catch(e){}
+    return () => { try { document.removeEventListener('combobox:hide-all', handler); } catch(e){} };
+  }, []);
+
+  const hideTooltipSoon = (delay = 120) => {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    tooltipTimer.current = setTimeout(() => {
+      // if another combobox has become active since this hide was scheduled, allow hide immediately
+      try { if (typeof window !== 'undefined' && window.__combobox_activeId && window.__combobox_activeId !== myComboboxId.current) {
+        // another combobox is active; proceed to hide
+      } } catch(e){}
+      // If the selected-value is currently hovered, and it's the same node the tooltip
+      // is anchored to, abort hiding to avoid flicker
+      if (selectedHoverNodeRef.current) {
+        if (currentTooltipRef.current && currentTooltipRef.current === selectedHoverNodeRef.current) {
+          tooltipTimer.current = null;
+          return;
+        }
+      }
+      // If a tooltip was shown very recently, avoid hiding immediately (anti-flicker)
+      const now = Date.now();
+      if (lastShowRef.current && (now - lastShowRef.current) < 300) {
+        tooltipTimer.current = null;
+        return;
+      }
+      setTooltipOpen(false);
+      setTooltipContent("");
+      currentTooltipRef.current = null;
+      tooltipTimer.current = null;
+    }, delay);
+  };
+
+  const hideTooltipNow = () => {
+    if (tooltipTimer.current) { clearTimeout(tooltipTimer.current); tooltipTimer.current = null; }
+    if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; }
+    currentTooltipRef.current = null;
+    try { if (typeof window !== 'undefined' && window.__combobox_activeId === myComboboxId.current) window.__combobox_activeId = null; } catch(e){}
+    setTooltipOpen(false);
+    setTooltipContent("");
+  };
 
   // Floating UI: robust positioning, flipping, and auto-updates
   const { x, y, strategy, refs, update, floatingStyles } = useFloating({
@@ -908,6 +1168,8 @@ const Combobox = ({
       onSelect('', '');
     }
     closeList();
+    // hide tooltip immediately on selection to avoid dangling/tooltips at 0,0
+    try { hideTooltipNow(); } catch (e) {}
     inputRef.current?.blur();
   };
 
@@ -944,54 +1206,121 @@ const Combobox = ({
     if (typeof update === 'function') update();
   }, [open, refs, update]);
 
+  // When highlight changes due to keyboard navigation, ensure the highlighted
+  // list item is scrolled into view and (if enabled) show the tooltip for it.
+  useEffect(() => {
+    if (!open || highlight < 0) {
+      if (showTooltip) hideTooltipSoon();
+      return;
+    }
+    // find the rendered list container (portal floating or inline listRef)
+    const container = (refs && refs.floating && refs.floating.current) || listRef.current;
+    if (!container) return;
+    const item = container.querySelector(`[data-idx=\"${highlight}\"]`);
+    if (item) {
+      try {
+        // scroll highlighted item into view within the container
+        item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (e) {}
+      if (showTooltip) {
+        try {
+          const node = item.querySelector('.combobox-item-name');
+          if (node) showTooltipFor(node, (filtered[highlight] && (filtered[highlight].effect || filtered[highlight].Effect)) || '');
+        } catch (e) {}
+      }
+    }
+  }, [highlight, open, refs, listRef, showTooltip, filtered]);
+
   return (
     <div className="relative" onKeyDown={onKeyDown}>
-      <input
-        ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
-        type="text"
-        value={input}
-        onChange={(e) => { setInput(e.target.value); openList(); }}
-        onFocus={openList}
-        onBlur={() => { setTimeout(closeList, 150); }}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={`w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all ${disabled ? 'opacity-60' : ''}`}
-        style={{ caretColor: '#fb923c' }}
-        aria-autocomplete="list"
-        aria-expanded={open}
-      />
+      <div className="relative" onPointerLeave={() => { if (showTooltip) hideTooltipNow(); }}>
+        <input
+          ref={(el) => { inputRef.current = el; try { reference(el); } catch(e) {} }}
+          type="text"
+          value={input}
+          onChange={(e) => { setInput(e.target.value); openList(); }}
+          onFocus={(e) => { openList(); if (showTooltip && selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
+          onBlur={(e) => {
+            if (blurTimer.current) clearTimeout(blurTimer.current);
+            blurTimer.current = setTimeout(() => { closeList(); if (showTooltip) hideTooltipNow(); blurTimer.current = null; }, 200);
+          }}
+          onMouseEnter={(e) => { if (showTooltip && selectedItem) showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); }}
+          onMouseLeave={() => { if (showTooltip) hideTooltipSoon(); }}
+          placeholder={placeholder}
+          disabled={disabled}
+          aria-label={placeholder}
+          className={`w-full px-3 py-2 border border-slate-500 rounded text-xs font-medium bg-slate-800 text-white focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/50 transition-all ${disabled ? 'opacity-60' : ''}`}
+          style={{ caretColor: '#fb923c' }}
+          aria-autocomplete="list"
+          aria-expanded={open}
+        />
+        {renderValueRight && selectedItem ? (
+          <div
+            className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-auto"
+            onMouseEnter={(e) => { if (blurTimer.current) { clearTimeout(blurTimer.current); blurTimer.current = null; } selectedHoverNodeRef.current = e.currentTarget; if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
+            onMouseLeave={() => { selectedHoverNodeRef.current = null; if (showTooltip) hideTooltipNow(); }}
+            onFocus={(e) => { if (showTooltip && selectedItem) { showTooltipFor(e.currentTarget, selectedItem.effect || selectedItem.Effect); try { if (typeof tUpdate === 'function') tUpdate(); } catch (err) {} } }}
+            onBlur={() => { if (showTooltip) hideTooltipNow(); }}
+            tabIndex={-1}
+          >
+            {renderValueRight(selectedItem)}
+          </div>
+        ) : null}
       {open && filtered.length > 0 && (
-        (typeof document !== 'undefined')
+          (typeof document !== 'undefined')
           ? createPortal(
-            <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
+            <ul ref={(el) => { try { refs.setFloating?.(el); } catch(e){} }} role="listbox" onPointerLeave={() => { if (showTooltip) hideTooltipNow(); }} className="z-[9999] mt-1 max-h-44 overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg" style={floatingStyles}>
               {filtered.map((it, idx) => (
                 <li
+                  data-idx={idx}
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={() => setHighlight(idx)}
+                  onMouseEnter={(e) => { try { hideTooltipNow(); } catch(e){}; setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { if (showTooltip) hideTooltipNow(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
-                  {getName(it)}
+                  <div className="flex items-center justify-between">
+                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => { if (showTooltip) showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || ''); }} onBlur={() => { if (showTooltip) hideTooltipSoon(); }}>{getName(it)}</span>
+                    {renderItemRight ? renderItemRight(it) : ((typeof it === 'object' && (it.cost || it.Cost)) ? (
+                      <span className="ml-2 text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{Number(it.cost || it.Cost || 0)}</span>
+                    ) : null)}
+                  </div>
                 </li>
               ))}
             </ul>,
             document.body
           ) : (
-            <ul ref={listRef} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
+            <ul ref={listRef} onPointerLeave={() => { if (showTooltip) hideTooltipNow(); }} className="absolute z-50 mt-1 max-h-44 w-full overflow-auto bg-slate-800 border border-slate-600 rounded shadow-lg">
               {filtered.map((it, idx) => (
                 <li
+                  data-idx={idx}
                   key={it.id || idx}
                   onMouseDown={(ev) => { ev.preventDefault(); commitSelection(it); }}
-                  onMouseEnter={() => setHighlight(idx)}
+                  onMouseEnter={(e) => { try { hideTooltipNow(); } catch(e){}; setHighlight(idx); try { const node = e.currentTarget.querySelector('.combobox-item-name'); if (node && showTooltip) showTooltipFor(node, (it && (it.effect || it.Effect)) || ''); } catch(e){} }}
+                  onMouseLeave={() => { if (showTooltip) hideTooltipNow(); }}
                   className={`px-3 py-2 cursor-pointer text-sm ${highlight === idx ? 'bg-slate-700 text-white' : 'text-slate-200'}`}
                 >
-                  {getName(it)}
+                  <div className="flex items-center justify-between">
+                    <span className="truncate mr-4 combobox-item-name" tabIndex={0} onFocus={(e) => { if (showTooltip) showTooltipFor(e.currentTarget, (it && (it.effect || it.Effect)) || ''); }} onBlur={() => { if (showTooltip) hideTooltipSoon(); }}>{getName(it)}</span>
+                    {renderItemRight ? renderItemRight(it) : ((typeof it === 'object' && (it.cost || it.Cost)) ? (
+                      <span className="ml-2 text-xs bg-slate-700 text-slate-200 px-2 py-0.5 rounded-full">{Number(it.cost || it.Cost || 0)}</span>
+                    ) : null)}
+                  </div>
                 </li>
               ))}
             </ul>
           )
       )}
+
+      {/* Tooltip portal */}
+      {tooltipOpen && (typeof document !== 'undefined') ? createPortal(
+        <div ref={(el) => { try { tRefs.setFloating?.(el); } catch(e){} }} style={tFloatingStyles} className="z-[10000] pointer-events-none max-w-xs text-sm text-slate-100 bg-slate-900 p-2 rounded shadow-lg">
+          {tooltipContent}
+        </div>,
+        document.body
+      ) : null}
     </div>
+  </div>
   );
 };
 
@@ -1001,6 +1330,8 @@ const MatchCard = ({
   capsules,
   costumes,
   aiItems,
+  rulesets,
+  activeRulesetKey,
   onDuplicate,
   onRemove,
   onAddCharacter,
@@ -1081,7 +1412,7 @@ const MatchCard = ({
       </div>
       {!collapsed && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <TeamPanel
+            <TeamPanel
             teamName="team1"
             displayName={match.team1Name}
             team={match.team1}
@@ -1089,6 +1420,8 @@ const MatchCard = ({
             capsules={capsules}
             costumes={costumes}
             aiItems={aiItems}
+            rulesets={rulesets || null}
+            activeRulesetKey={activeRulesetKey}
             onAddCharacter={() => onAddCharacter("team1")}
             onRemoveCharacter={(index) => onRemoveCharacter("team1", index)}
             onUpdateCharacter={(index, field, value) =>
@@ -1113,6 +1446,8 @@ const MatchCard = ({
             capsules={capsules}
             costumes={costumes}
             aiItems={aiItems}
+            rulesets={rulesets || null}
+            activeRulesetKey={activeRulesetKey}
             onAddCharacter={() => onAddCharacter("team2")}
             onRemoveCharacter={(index) => onRemoveCharacter("team2", index)}
             onUpdateCharacter={(index, field, value) =>
@@ -1142,6 +1477,8 @@ const TeamPanel = ({
   capsules,
   costumes,
   aiItems,
+  rulesets,
+  activeRulesetKey,
   onAddCharacter,
   onRemoveCharacter,
   onUpdateCharacter,
@@ -1232,10 +1569,13 @@ const TeamPanel = ({
                 matchId={matchId}
                 matchName={matchName}
                 character={char}
+                team={team}
                 characters={characters}
                 capsules={capsules}
                 costumes={costumes}
                 aiItems={aiItems}
+                rulesets={rulesets}
+                activeRulesetKey={activeRulesetKey}
                 onRemove={() => onRemoveCharacter(index)}
                 onUpdate={(field, value) => onUpdateCharacter(index, field, value)}
                 onUpdateCapsule={(capsuleIndex, value) =>
@@ -1264,10 +1604,13 @@ const CharacterSlot = ({
   matchId,
   matchName,
   character,
+  team,
   characters,
   capsules,
   costumes,
   aiItems,
+  rulesets,
+  activeRulesetKey,
   onRemove,
   onUpdate,
   onUpdateCapsule,
@@ -1278,6 +1621,32 @@ const CharacterSlot = ({
     (c) => c.exclusiveFor === character.name
   );
   const fileInputRef = React.useRef(null);
+
+  // compute rule violations for soft mode
+  const computeViolations = () => {
+    const violations = [];
+    const ruleset = rulesets?.rulesets?.[activeRulesetKey];
+    if (!ruleset) return violations;
+    const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.cost || 0)]));
+    const used = (character.capsules||[]).filter(Boolean);
+    if (ruleset.mode === 'soft') {
+      if (ruleset.scope === 'per-character' && ruleset.totalCost) {
+        const sum = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+        if (sum > (ruleset.totalCost || 0)) {
+          violations.push({ type: 'cost', message: `Character exceeds cost limit (${sum} > ${ruleset.totalCost})`, over: sum - (ruleset.totalCost || 0) });
+        }
+      }
+      const uniqueTeam = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-team' && r.params?.enabled);
+      if (uniqueTeam) {
+        const teamUsed = (team || []).flatMap(ch => ch.capsules || []).filter(Boolean);
+        // duplicates in team
+        const dupSet = used.filter(id => teamUsed.filter(x => x === id).length > 1);
+        if (dupSet.length > 0) violations.push({ type: 'duplicate-team', message: 'Duplicate capsule(s) used within the same team' });
+      }
+    }
+    return violations;
+  };
+  const violations = computeViolations();
 
   return (
   <div className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg p-3 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-500 flex flex-col relative z-10">
@@ -1293,6 +1662,7 @@ const CharacterSlot = ({
               getName={(c) => c.name}
               placeholder="Type or select character"
               onSelect={(id) => onUpdate('id', id)}
+              showTooltip={false}
             />
           </div>
 
@@ -1307,6 +1677,7 @@ const CharacterSlot = ({
               placeholder="Type or select costume"
               onSelect={(id) => onUpdate('costume', id)}
               disabled={!character.name}
+              showTooltip={false}
             />
           </div>
         </div>
@@ -1324,16 +1695,63 @@ const CharacterSlot = ({
       </div>
       {!collapsed && (
         <div className="space-y-2 mt-3">
-          <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide">
-            Capsules
+          {violations.length > 0 && (
+            <div className={`px-3 py-2 rounded mb-2 font-semibold ${violations.some(v=>v.type==='cost') ? 'bg-red-800 text-white' : 'bg-yellow-600 text-slate-900'}`}>
+                ⚠️ {violations.map(v => v.type === 'cost' ? `Points over limit: ${v.over}` : v.message).join(' · ')}
+            </div>
+          )}
+          <label className="block text-xs font-semibold text-cyan-300 mb-1 uppercase tracking-wide flex items-center justify-between">
+            <span>Capsules</span>
+            <span className="text-xs text-slate-300 font-medium">
+              {(() => {
+                try {
+                  const ruleset = rulesets?.rulesets?.[activeRulesetKey];
+                  if (!ruleset) return '';
+                  if (ruleset.scope !== 'per-character') return '';
+                  const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.Cost || c.cost || 0)]));
+                  const used = (character.capsules||[]).filter(Boolean);
+                  const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                  const total = ruleset.totalCost || 0;
+                  const over = sumUsed - total;
+                  const cls = over > 0 ? 'text-red-400 font-bold' : 'text-slate-300';
+                  return <span className={cls}>{`Points: ${sumUsed} / ${total}`}</span>;
+                } catch (e) { return ''; }
+              })()}
+            </span>
           </label>
           {(() => {
-            // Per-character: compute used capsule ids (non-empty)
+            const ruleset = rulesets?.rulesets?.[activeRulesetKey];
             const usedCapsuleIds = (character.capsules || []).filter(Boolean);
+            // teamUsed includes capsules used by other characters in same team
+            const teamUsed = (team || []).flatMap(ch => ch.capsules || []).filter(Boolean);
+            const costMap = Object.fromEntries((capsules||[]).map(c => [c.id, Number(c.Cost || c.cost || 0)]));
+
             return character.capsules.map((capsuleId, i) => {
-              // For this slot, allow the currently selected capsuleId to remain in the list
-              const available = (capsules || []).filter(c => c && (c.id === capsuleId || !usedCapsuleIds.includes(c.id)));
-              return (
+              let available = (capsules || []);
+              // banned ids
+              const banned = (ruleset?.restrictions || []).find(r => r.type === 'banned-ids')?.params?.ids || [];
+              available = available.filter(c => c && !banned.includes(c.id));
+
+              // unique-per-character
+              const uniqueChar = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-character' && r.params?.enabled);
+              if (uniqueChar) {
+                available = available.filter(c => c && (c.id === capsuleId || !usedCapsuleIds.includes(c.id)));
+              }
+
+              // unique-per-team
+              const uniqueTeam = (ruleset?.restrictions || []).some(r => r.type === 'unique-per-team' && r.params?.enabled);
+              if (uniqueTeam) {
+                available = available.filter(c => c && (c.id === capsuleId || !teamUsed.includes(c.id)));
+              }
+
+              // totalCost (hard, per-character)
+              if (ruleset?.mode === 'hard' && ruleset?.scope === 'per-character') {
+                const usedOther = usedCapsuleIds.filter((id, idx) => idx !== i);
+                const sumUsedOther = usedOther.reduce((s, id) => s + (costMap[id] || 0), 0);
+                available = available.filter(c => c && (c.id === capsuleId || (sumUsedOther + (costMap[c.id] || 0)) <= (ruleset.totalCost || 0)));
+              }
+
+                return (
                 <div key={i} className="mb-1">
                   <Combobox
                     valueId={capsuleId}
@@ -1341,6 +1759,43 @@ const CharacterSlot = ({
                     getName={(c) => c.name}
                     placeholder={`Capsule ${i + 1}`}
                     onSelect={(id) => onUpdateCapsule(i, id)}
+                    renderItemRight={(it) => {
+                      const cost = Number(it.cost || it.Cost || 0);
+                      // compute per-character overage
+                      const used = (character.capsules||[]).filter(Boolean);
+                      const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                      const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
+                      const over = sumUsed - total;
+                      const EXPENSIVE_THRESHOLD = 10; // adjust as desired
+                      // determine base color by cost
+                      let baseClass = 'bg-amber-200 text-slate-800';
+                      if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                      else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
+                      else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                      // determine if we should show red: either cost meets expensive threshold OR character is over budget
+                      const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
+                      const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
+                      const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
+                      return (
+                        <span className={`ml-2 text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>
+                      );
+                    }}
+                    renderValueRight={(it) => {
+                      const cost = Number(it.cost || it.Cost || 0);
+                      const used = (character.capsules||[]).filter(Boolean);
+                      const sumUsed = used.reduce((s, id) => s + (costMap[id] || 0), 0);
+                      const total = (ruleset && ruleset.totalCost) ? ruleset.totalCost : 0;
+                      const over = sumUsed - total;
+                      const EXPENSIVE_THRESHOLD = 10;
+                      let baseClass = 'bg-amber-200 text-slate-800';
+                      if (cost === 1) baseClass = 'bg-amber-100 text-slate-800';
+                      else if (cost === 2) baseClass = 'bg-amber-200 text-slate-800';
+                      else if (cost >= 3) baseClass = 'bg-amber-300 text-slate-800';
+                      const rulesetActive = !!(ruleset && ruleset.scope && ruleset.scope !== 'none');
+                      const showOver = (rulesetActive && over > 0) || (cost >= EXPENSIVE_THRESHOLD);
+                      const badgeClass = showOver ? 'bg-red-900 text-white' : baseClass;
+                      return <span className={`text-xs ${badgeClass} px-2 py-0.5 rounded-full`}>{cost}</span>;
+                    }}
                   />
                 </div>
               );
@@ -1357,6 +1812,7 @@ const CharacterSlot = ({
               getName={(a) => a.name}
               placeholder="Type or select AI strategy"
               onSelect={(id) => onUpdate('ai', id)}
+              showTooltip={false}
             />
           </div>
           <div className="flex justify-between items-center">

@@ -1,0 +1,62 @@
+version: 1
+default: "standard"
+
+rulesets:
+  standard:
+    metadata:
+      name: "Standard"
+      description: "Per-character cost limit: 12"
+      author: "team"
+      createdAt: "2025-10-04"
+    totalCost: 12
+    scope: per-character
+    mode: soft
+    restrictions:
+      - type: unique-per-character
+        params:
+          enabled: true
+      - type: banned-ids
+        params:
+          ids:
+            - "00_0_0151"
+
+  draft:
+    metadata:
+      name: "Draft - single pick"
+      description: "Low-cost draft mode - very restrictive"
+      createdAt: "2025-10-04"
+    totalCost: 6
+    scope: per-character
+    mode: hard
+    restrictions:
+      - type: unique-per-character
+        params: { enabled: true }
+      - type: unique-per-team
+        params: { enabled: true }
+      - type: banned-ids
+        params:
+          ids:
+            - "00_0_0151"
+
+  competitive:
+    metadata:
+      name: "Competitive"
+      description: "No duplicates across a team, per-team total cost <= 24. Soft warnings for character-level cost overages."
+      createdAt: "2025-10-04"
+    totalCost: 24
+    scope: per-team
+    mode: soft
+    restrictions:
+      - type: unique-per-team
+        params: { enabled: true }
+
+  beginner:
+    metadata:
+      name: "Beginner"
+      description: "Small allowance, helpful warnings"
+    totalCost: 12
+    scope: per-character
+    mode: soft
+    restrictions:
+      - type: unique-per-character
+        params: { enabled: false }
